@@ -1,0 +1,53 @@
+﻿<resources xmlns:tools="http://schemas.android.com/tools">
+    <style name="Base.Theme.MyApp" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:windowLayoutInDisplayCutoutMode" tools:targetApi="28">shortEdges</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar" tools:targetApi="23">true</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="27">true</item>
+    </style>
+
+    <style name="Theme.MyApp" parent="Base.Theme.MyApp" />
+
+    <style name="Theme.MyApp.Blue" parent="Base.Theme.MyApp">
+        <item name="colorPrimary">#5B8DB8</item>
+        <item name="colorPrimaryContainer">#D0E4F5</item>
+        <item name="colorSecondary">#3A6B98</item>
+        <item name="colorTertiary">#2A5B88</item>
+    </style>
+
+    <style name="Theme.MyApp.Green" parent="Base.Theme.MyApp">
+        <item name="colorPrimary">#7B9E87</item>
+        <item name="colorPrimaryContainer">#D4E8DA</item>
+        <item name="colorSecondary">#5A7E67</item>
+        <item name="colorTertiary">#4A6E57</item>
+    </style>
+
+    <style name="Theme.MyApp.Purple" parent="Base.Theme.MyApp">
+        <item name="colorPrimary">#9B8EA8</item>
+        <item name="colorPrimaryContainer">#E2DCE8</item>
+        <item name="colorSecondary">#7A6E88</item>
+        <item name="colorTertiary">#6A5E78</item>
+    </style>
+
+    <style name="Theme.MyApp.Red" parent="Base.Theme.MyApp">
+        <item name="colorPrimary">#B87878</item>
+        <item name="colorPrimaryContainer">#F0D8D8</item>
+        <item name="colorSecondary">#985858</item>
+        <item name="colorTertiary">#884848</item>
+    </style>
+
+    <style name="Theme.MyApp.Teal" parent="Base.Theme.MyApp">
+        <item name="colorPrimary">#8BA5A0</item>
+        <item name="colorPrimaryContainer">#D8E8E6</item>
+        <item name="colorSecondary">#6A8580</item>
+        <item name="colorTertiary">#5A7570</item>
+    </style>
+
+    <style name="Theme.MyApp.Brown" parent="Base.Theme.MyApp">
+        <item name="colorPrimary">#AA9070</item>
+        <item name="colorPrimaryContainer">#EAE0D4</item>
+        <item name="colorSecondary">#8A7050</item>
+        <item name="colorTertiary">#7A6040</item>
+    </style>
+</resources>

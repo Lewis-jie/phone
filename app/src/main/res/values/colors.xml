@@ -1,0 +1,4 @@
+﻿<resources>
+    <!-- theme_color 保留供 XML 引用兜底，实际主题色统一通过 ThemeHelper.getPrimaryColor() 读取 -->
+    <color name="theme_color">#5B8DB8</color>
+</resources>

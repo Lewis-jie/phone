@@ -1,0 +1,151 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<navigation xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/nav_graph"
+    app:startDestination="@id/taskListFragment">
+
+    <fragment
+        android:id="@+id/taskListFragment"
+        android:name="com.lewis.timetable.TaskListFragment"
+        android:label="任务列表">
+        <action
+            android:id="@+id/action_taskList_to_addTask"
+            app:destination="@id/addTaskFragment"
+            app:enterAnim="@anim/slide_up"
+            app:exitAnim="@anim/fade_stay"
+            app:popEnterAnim="@anim/fade_stay"
+            app:popExitAnim="@anim/slide_down" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/scheduleFragment"
+        android:name="com.lewis.timetable.ScheduleFragment"
+        android:label="日程">
+        <action
+            android:id="@+id/action_schedule_to_addTask"
+            app:popUpTo="@id/scheduleFragment"
+            app:popUpToInclusive="false"
+            app:destination="@id/addTaskFragment"
+            app:enterAnim="@anim/slide_up"
+            app:exitAnim="@anim/fade_stay"
+            app:popEnterAnim="@anim/fade_stay"
+            app:popExitAnim="@anim/slide_down" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/categoryFragment"
+        android:name="com.lewis.timetable.CategoryFragment"
+        android:label="设置">
+        <action
+            android:id="@+id/action_category_to_course"
+            app:destination="@id/courseFragment"
+            app:enterAnim="@anim/slide_up"
+            app:exitAnim="@anim/fade_stay"
+            app:popEnterAnim="@anim/fade_stay"
+            app:popExitAnim="@anim/slide_down" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/addTaskFragment"
+        android:name="com.lewis.timetable.AddTaskFragment"
+        android:label="添加任务">
+        <argument
+            android:name="taskId"
+            app:argType="integer"
+            android:defaultValue="-1" />
+        <argument
+            android:name="sourceFragment"
+            app:argType="integer"
+            android:defaultValue="0" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/courseFragment"
+        android:name="com.lewis.timetable.CourseFragment"
+        android:label="课表">
+        <action
+            android:id="@+id/action_course_to_import"
+            app:destination="@id/importCourseFragment"
+            app:enterAnim="@anim/slide_up"
+            app:exitAnim="@anim/fade_stay"
+            app:popEnterAnim="@anim/fade_stay"
+            app:popExitAnim="@anim/slide_down" />
+        <action
+            android:id="@+id/action_course_to_settings"
+            app:destination="@id/courseSettingsFragment"
+            app:enterAnim="@anim/slide_up"
+            app:exitAnim="@anim/fade_stay"
+            app:popEnterAnim="@anim/fade_stay"
+            app:popExitAnim="@anim/slide_down" />
+        <action
+            android:id="@+id/action_course_to_lessonEdit"
+            app:destination="@id/courseLessonEditFragment"
+            app:enterAnim="@anim/slide_up"
+            app:exitAnim="@anim/fade_stay"
+            app:popEnterAnim="@anim/fade_stay"
+            app:popExitAnim="@anim/slide_down" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/importCourseFragment"
+        android:name="com.lewis.timetable.ImportCourseFragment"
+        android:label="导入课表" />
+
+    <fragment
+        android:id="@+id/courseSettingsFragment"
+        android:name="com.lewis.timetable.CourseSettingsFragment"
+        android:label="课表设置">
+        <action
+            android:id="@+id/action_courseSettings_to_courseOverview"
+            app:destination="@id/courseOverviewFragment"
+            app:enterAnim="@anim/slide_up"
+            app:exitAnim="@anim/fade_stay"
+            app:popEnterAnim="@anim/fade_stay"
+            app:popExitAnim="@anim/slide_down" />
+        <action
+            android:id="@+id/action_courseSettings_to_timetableEditor"
+            app:destination="@id/timetableEditorFragment"
+            app:enterAnim="@anim/slide_up"
+            app:exitAnim="@anim/fade_stay"
+            app:popEnterAnim="@anim/fade_stay"
+            app:popExitAnim="@anim/slide_down" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/courseOverviewFragment"
+        android:name="com.lewis.timetable.CourseOverviewFragment"
+        android:label="课程总览">
+        <action
+            android:id="@+id/action_courseOverview_to_lessonEdit"
+            app:destination="@id/courseLessonEditFragment"
+            app:enterAnim="@anim/slide_up"
+            app:exitAnim="@anim/fade_stay"
+            app:popEnterAnim="@anim/fade_stay"
+            app:popExitAnim="@anim/slide_down" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/timetableEditorFragment"
+        android:name="com.lewis.timetable.TimetableEditorFragment"
+        android:label="时间表编辑">
+        <argument
+            android:name="timetableId"
+            app:argType="integer"
+            android:defaultValue="-1" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/courseLessonEditFragment"
+        android:name="com.lewis.timetable.CourseLessonEditFragment"
+        android:label="编辑课程">
+        <argument
+            android:name="scheduleId"
+            app:argType="integer"
+            android:defaultValue="-1" />
+        <argument
+            android:name="courseName"
+            app:argType="string"
+            android:defaultValue="" />
+    </fragment>
+
+</navigation>
