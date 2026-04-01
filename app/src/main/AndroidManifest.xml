@@ -5,11 +5,6 @@
         android:maxSdkVersion="29" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
-    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
 
     <application
         android:name=".MyApplication"
@@ -29,27 +24,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
-        <activity
-            android:name=".ReminderAlarmActivity"
-            android:excludeFromRecents="true"
-            android:exported="false"
-            android:launchMode="singleTop"
-            android:showWhenLocked="true"
-            android:turnScreenOn="true"
-            android:theme="@style/Theme.MyApp" />
-
-        <receiver
-            android:name=".ReminderReceiver"
-            android:exported="false" />
-
-        <receiver
-            android:name=".BootReceiver"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-            </intent-filter>
-        </receiver>
 
     </application>
 

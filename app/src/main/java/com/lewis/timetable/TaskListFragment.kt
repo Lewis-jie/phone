@@ -36,6 +36,7 @@ class TaskListFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        viewModel.ensureTagColorsIfNeeded()
 
         val recyclerView = view.findViewById<RecyclerView>(R.id.recycler_view)
         val fab = view.findViewById<FloatingActionButton>(R.id.fab_add_task)

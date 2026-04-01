@@ -5,7 +5,9 @@ import android.view.GestureDetector
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewPropertyAnimator
 import android.view.ViewGroup
+import android.view.animation.DecelerateInterpolator
 import android.widget.*
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
@@ -15,6 +17,9 @@ import java.util.*
 import android.graphics.Color
 
 class ScheduleFragment : Fragment() {
+    companion object {
+        private const val DAY_MS = 86_400_000L
+    }
 
     private val viewModel: TaskViewModel by viewModels()
     private val courseViewModel: CourseViewModel by viewModels()
@@ -23,7 +28,7 @@ class ScheduleFragment : Fragment() {
     private lateinit var tabMonth:     TextView
     private lateinit var contentFrame: FrameLayout
 
-    private var currentTab           = 0
+    private var currentTab           = 1
     private var dayCalendar          = Calendar.getInstance()
     private var weekCalendar         = Calendar.getInstance()
     private var monthCalendar        = Calendar.getInstance()
@@ -37,6 +42,12 @@ class ScheduleFragment : Fragment() {
     private var cachedTimetablePeriods: List<TimetablePeriod>  = emptyList()
     private var cachedActiveSchedule:   CourseSchedule?        = null
     private var currentContentView:     View?                  = null
+    private var contentAnimator:        ViewPropertyAnimator?  = null
+    private var isContentAnimating                           = false
+    private var renderPosted                                 = false
+    private var weekLayoutSignature: String?                 = null
+    private var weekOverlaySignature: String?                = null
+    private val weekOverlayLayers                           = mutableListOf<FrameLayout>()
 
     private data class MergedLessonBlock(
         val lesson: CourseLesson,
@@ -47,12 +58,35 @@ class ScheduleFragment : Fragment() {
     private data class WeekVisualItem(
         val startMin: Int,
         val endMin: Int,
-        val text: String,
+        val startLabel: String,
+        val title: String,
+        val classroom: String? = null,
+        val teacher: String? = null,
+        val endLabel: String,
         val backgroundColor: Int,
         val textColor: Int,
         val textAlpha: Float = 1f,
         val centerOverlay: String? = null,
         val onClick: (() -> Unit)? = null
+    )
+
+    private data class WeekFrameState(
+        val monday: Calendar,
+        val mondayMs: Long,
+        val sunday: Calendar,
+        val startMs: Long,
+        val endMs: Long,
+        val viewStartMin: Int,
+        val viewEndMin: Int,
+        val totalHeight: Int,
+        val timeColWidth: Int,
+        val bodyWidth: Int,
+        val dayWidths: IntArray,
+        val pxPerMin: Float,
+        val density: Float,
+        val allTasks: List<Task>,
+        val weekNum: Int,
+        val renderLessons: Boolean
     )
 
 
@@ -92,25 +126,25 @@ class ScheduleFragment : Fragment() {
 
         viewModel.allTasks.observe(viewLifecycleOwner) { tasks ->
             cachedAllTasks = tasks
-            renderCurrentTab()
+            requestRenderCurrentTab()
         }
         viewModel.getRootRepeatTasks().observe(viewLifecycleOwner) { tasks ->
             cachedRepeatTasks = tasks
-            renderCurrentTab()
+            requestRenderCurrentTab()
         }
         // 课程数据
         courseViewModel.activeLessons.observe(viewLifecycleOwner) { lessons ->
             cachedLessons = lessons
-            renderCurrentTab()
+            requestRenderCurrentTab()
         }
         courseViewModel.activeTimetablePeriods.observe(viewLifecycleOwner) { periods ->
             cachedTimetablePeriods = periods
-            renderCurrentTab()
+            requestRenderCurrentTab()
         }
 
         courseViewModel.activeSchedule.observe(viewLifecycleOwner) { schedule ->
             cachedActiveSchedule = schedule
-            renderCurrentTab()
+            requestRenderCurrentTab()
         }
 
         switchTab(currentTab)
@@ -178,18 +212,97 @@ class ScheduleFragment : Fragment() {
 
     private fun onSwipedLeft() {
         when (currentTab) {
-            0 -> { dayCalendar.add(Calendar.DAY_OF_MONTH, 1);      renderCurrentTab() }
-            1 -> { weekCalendar.add(Calendar.WEEK_OF_YEAR, 1);     renderCurrentTab() }
+            0 -> animateHorizontalPageChange(direction = 1) {
+                dayCalendar.add(Calendar.DAY_OF_MONTH, 1)
+            }
+            1 -> animateHorizontalPageChange(direction = 1) {
+                weekCalendar.add(Calendar.WEEK_OF_YEAR, 1)
+            }
         }
     }
     private fun onSwipedRight() {
         when (currentTab) {
-            0 -> { dayCalendar.add(Calendar.DAY_OF_MONTH, -1);     renderCurrentTab() }
-            1 -> { weekCalendar.add(Calendar.WEEK_OF_YEAR, -1);    renderCurrentTab() }
+            0 -> animateHorizontalPageChange(direction = -1) {
+                dayCalendar.add(Calendar.DAY_OF_MONTH, -1)
+            }
+            1 -> animateHorizontalPageChange(direction = -1) {
+                weekCalendar.add(Calendar.WEEK_OF_YEAR, -1)
+            }
         }
     }
 
+    private fun animateHorizontalPageChange(direction: Int, updateState: () -> Unit) {
+        if (isContentAnimating) return
 
+        val content = resolveAnimatedContentView()
+        val width = contentFrame.width
+        if (content == null || width <= 0) {
+            updateState()
+            renderCurrentTab()
+            return
+        }
+
+        val offset = (width * 0.16f).coerceAtLeast(48f * resources.displayMetrics.density)
+        val exitTranslation = if (direction > 0) -offset else offset
+        val enterTranslation = -exitTranslation
+
+        isContentAnimating = true
+        contentAnimator?.cancel()
+        contentFrame.setOnTouchListener { _, _ -> true }
+
+        contentAnimator = content.animate()
+            .translationX(exitTranslation)
+            .alpha(0.78f)
+            .setDuration(130L)
+            .setInterpolator(DecelerateInterpolator())
+            .withEndAction {
+                updateState()
+                renderCurrentTab()
+
+                val updatedContent = resolveAnimatedContentView()
+                if (updatedContent == null) {
+                    restoreSwipeHandler()
+                    isContentAnimating = false
+                    return@withEndAction
+                }
+
+                updatedContent.translationX = enterTranslation
+                updatedContent.alpha = 0.84f
+                contentAnimator = updatedContent.animate()
+                    .translationX(0f)
+                    .alpha(1f)
+                    .setDuration(170L)
+                    .setInterpolator(DecelerateInterpolator())
+                    .withEndAction {
+                        updatedContent.translationX = 0f
+                        updatedContent.alpha = 1f
+                        restoreSwipeHandler()
+                        isContentAnimating = false
+                    }
+            }
+    }
+
+    private fun resolveAnimatedContentView(): View? {
+        val root = currentContentView ?: return null
+        return when (currentTab) {
+            0 -> root.findViewById(R.id.day_scroll_view)
+            1 -> root.findViewById(R.id.week_scroll_view)
+            2 -> if (monthCompressed && selectedDayCalendar != null) {
+                root.findViewById(R.id.selected_day_scroll)
+            } else {
+                root.findViewById(R.id.month_content_container)
+            }
+            else -> root
+        }
+    }
+
+    private fun restoreSwipeHandler() {
+        if (currentTab != 2) {
+            contentFrame.setOnTouchListener { _, ev -> swipeDetector.onTouchEvent(ev); false }
+        } else {
+            contentFrame.setOnTouchListener(null)
+        }
+    }
 
     private fun renderCurrentTab() {
         val v = currentContentView ?: return
@@ -200,6 +313,17 @@ class ScheduleFragment : Fragment() {
         }
     }
 
+    private fun requestRenderCurrentTab() {
+        if (renderPosted) return
+        val host = view ?: return
+        renderPosted = true
+        host.post {
+            renderPosted = false
+            if (!isAdded || view == null) return@post
+            renderCurrentTab()
+        }
+    }
+
 
 
     private fun inflateAndSetupDayView(): View {
@@ -207,10 +331,14 @@ class ScheduleFragment : Fragment() {
             .inflate(R.layout.view_day_schedule, contentFrame, false)
         attachSwipe(v)
         v.findViewById<TextView>(R.id.btn_prev_day).setOnClickListener {
-            dayCalendar.add(Calendar.DAY_OF_MONTH, -1); renderCurrentTab()
+            animateHorizontalPageChange(direction = -1) {
+                dayCalendar.add(Calendar.DAY_OF_MONTH, -1)
+            }
         }
         v.findViewById<TextView>(R.id.btn_next_day).setOnClickListener {
-            dayCalendar.add(Calendar.DAY_OF_MONTH, 1);  renderCurrentTab()
+            animateHorizontalPageChange(direction = 1) {
+                dayCalendar.add(Calendar.DAY_OF_MONTH, 1)
+            }
         }
         return v
     }
@@ -236,154 +364,301 @@ class ScheduleFragment : Fragment() {
             .inflate(R.layout.view_week_schedule, contentFrame, false)
         attachSwipe(v)
         v.findViewById<TextView>(R.id.btn_prev_week).setOnClickListener {
-            weekCalendar.add(Calendar.WEEK_OF_YEAR, -1); renderCurrentTab()
+            animateHorizontalPageChange(direction = -1) {
+                weekCalendar.add(Calendar.WEEK_OF_YEAR, -1)
+            }
         }
         v.findViewById<TextView>(R.id.btn_next_week).setOnClickListener {
-            weekCalendar.add(Calendar.WEEK_OF_YEAR, 1);  renderCurrentTab()
+            animateHorizontalPageChange(direction = 1) {
+                weekCalendar.add(Calendar.WEEK_OF_YEAR, 1)
+            }
         }
         return v
     }
 
     private fun renderWeekContent(view: View) {
-        val cal    = weekCalendar
-        val monday = CourseFragment.mondayOf(cal)
-        val sunday = (monday.clone() as Calendar).apply { add(Calendar.DAY_OF_MONTH, 6) }
+        val state = buildWeekFrameState()
 
         val fmt = SimpleDateFormat("MM/dd", Locale.getDefault())
         view.findViewById<TextView>(R.id.tv_week_title).text =
-            "${fmt.format(monday.time)} ~ ${fmt.format(sunday.time)}"
+            "${fmt.format(state.monday.time)} ~ ${fmt.format(state.sunday.time)}"
 
-        val start = startOfDay(monday).timeInMillis
-        val end = endOfDay(sunday).timeInMillis
+        val layoutSignature = buildWeekLayoutSignature(state)
+        if (layoutSignature != weekLayoutSignature || weekOverlayLayers.size != 7) {
+            buildWeekScaffold(view, state)
+            weekLayoutSignature = layoutSignature
+            weekOverlaySignature = null
+        }
 
-        val weekTasks = cachedAllTasks.filter { it.startTime?.let { t -> t in start..end } ?: false }
-        val expanded  = expandRepeatTasks(cachedRepeatTasks, start, end, weekTasks)
-        val allTasks  = weekTasks + expanded
+        val overlaySignature = buildWeekOverlaySignature(state)
+        if (overlaySignature != weekOverlaySignature) {
+            renderWeekOverlays(state)
+            weekOverlaySignature = overlaySignature
+        }
+    }
+
+    private fun buildWeekFrameState(): WeekFrameState {
+        val monday = CourseFragment.mondayOf(weekCalendar)
+        val sunday = (monday.clone() as Calendar).apply { add(Calendar.DAY_OF_MONTH, 6) }
+        val startMs = startOfDay(monday).timeInMillis
+        val endMs = endOfDay(sunday).timeInMillis
+
+        val weekTasks = cachedAllTasks.filter { it.startTime?.let { t -> t in startMs..endMs } ?: false }
+        val expanded = expandRepeatTasks(cachedRepeatTasks, startMs, endMs, weekTasks)
+        val allTasks = (weekTasks + expanded).sortedBy { it.startTime }
+
+        val hasTimetablePeriods = cachedTimetablePeriods.isNotEmpty()
+        val shouldWaitForPeriods = cachedLessons.isNotEmpty() &&
+            (cachedActiveSchedule?.timetableId ?: 0) > 0 &&
+            !hasTimetablePeriods
+        val renderLessons = !shouldWaitForPeriods
 
         var viewStartMin = 8 * 60
-        var viewEndMin   = 22 * 60
-        allTasks.forEach { task ->
-            task.startTime?.let { viewStartMin = minOf(viewStartMin, hourOf(it) * 60) }
-            task.endTime?.let   { viewEndMin   = maxOf(viewEndMin,  (hourOf(it) + 1) * 60) }
-        }
-        cachedLessons.forEach { lesson ->
-            val s = getSlotStartMin(lesson.slotIndex); val e = getSlotEndMin(lesson.slotIndex)
-            if (s > 0) viewStartMin = minOf(viewStartMin, (s / 60) * 60)
-            if (e > 0) viewEndMin   = maxOf(viewEndMin,  ((e + 59) / 60) * 60)
-        }
-        viewStartMin = (viewStartMin / 60) * 60
-        viewEndMin   = ((viewEndMin + 59) / 60) * 60
+        var viewEndMin = 22 * 60
 
-        val density      = resources.displayMetrics.density
-        val pxPerMin     = 1.5f * density
-        val totalHeight  = ((viewEndMin - viewStartMin) * pxPerMin).toInt()
+        if (hasTimetablePeriods) {
+            cachedTimetablePeriods.forEach { period ->
+                val startMin = period.startHour * 60 + period.startMinute
+                val endMin = startMin + period.durationMinutes
+                viewStartMin = minOf(viewStartMin, (startMin / 60) * 60)
+                viewEndMin = maxOf(viewEndMin, ((endMin + 59) / 60) * 60)
+            }
+        }
+
+        if (renderLessons) {
+            cachedLessons.forEach { lesson ->
+                val s = getSlotStartMin(lesson.slotIndex)
+                val e = getSlotEndMin(lesson.slotIndex)
+                if (s > 0) viewStartMin = minOf(viewStartMin, (s / 60) * 60)
+                if (e > 0) viewEndMin = maxOf(viewEndMin, ((e + 59) / 60) * 60)
+            }
+        }
+
+        if (!renderLessons && !hasTimetablePeriods) {
+            allTasks.forEach { task ->
+                task.startTime?.let { viewStartMin = minOf(viewStartMin, hourOf(it) * 60) }
+                task.endTime?.let { viewEndMin = maxOf(viewEndMin, (hourOf(it) + 1) * 60) }
+            }
+        }
+
+        viewStartMin = (viewStartMin / 60) * 60
+        viewEndMin = ((viewEndMin + 59) / 60) * 60
+
+        val density = resources.displayMetrics.density
+        val pxPerMin = 1.2f * density
+        val bottomLabelPadding = (14 * density).toInt()
+        val totalHeight = ((viewEndMin - viewStartMin) * pxPerMin).toInt() + bottomLabelPadding
         val timeColWidth = (48 * density).toInt()
         val availableDayWidth = (resources.displayMetrics.widthPixels - timeColWidth).coerceAtLeast(7)
-        val baseDayWidth = availableDayWidth / 7
-        val extraDayWidth = availableDayWidth % 7
-        val dayWidths = IntArray(7) { index -> baseDayWidth + if (index < extraDayWidth) 1 else 0 }
+        val uniformDayWidth = kotlin.math.ceil(availableDayWidth / 7f).toInt().coerceAtLeast(1)
+        val dayWidths = IntArray(7) { uniformDayWidth }
         val bodyWidth = timeColWidth + dayWidths.sum()
-        val dayNames     = listOf("一", "二", "三", "四", "五", "六", "日")
+        val weekNum = cachedActiveSchedule?.takeIf { it.semesterStart > 0 }
+            ?.let { CourseLesson.currentWeekNum(it.semesterStart, monday.timeInMillis) } ?: -1
 
+        return WeekFrameState(
+            monday = monday,
+            mondayMs = monday.timeInMillis,
+            sunday = sunday,
+            startMs = startMs,
+            endMs = endMs,
+            viewStartMin = viewStartMin,
+            viewEndMin = viewEndMin,
+            totalHeight = totalHeight,
+            timeColWidth = timeColWidth,
+            bodyWidth = bodyWidth,
+            dayWidths = dayWidths,
+            pxPerMin = pxPerMin,
+            density = density,
+            allTasks = allTasks,
+            weekNum = weekNum,
+            renderLessons = renderLessons
+        )
+    }
+
+    private fun buildWeekLayoutSignature(state: WeekFrameState): String {
+        return listOf(
+            state.mondayMs,
+            state.viewStartMin,
+            state.viewEndMin,
+            state.totalHeight,
+            state.timeColWidth,
+            state.bodyWidth,
+            state.dayWidths.joinToString(",")
+        ).joinToString("|")
+    }
+
+    private fun buildWeekOverlaySignature(state: WeekFrameState): String {
+        val taskSignature = state.allTasks.joinToString(";") {
+            "${it.id},${it.startTime},${it.endTime},${it.isCompleted},${it.title},${it.createdAt}"
+        }
+        val lessonSignature = if (!state.renderLessons) {
+            "lessons:pending"
+        } else {
+            cachedLessons.joinToString(";") {
+                "${it.id},${it.dayOfWeek},${it.slotIndex},${it.weekBitmap},${it.courseName},${it.classroom},${it.teacher},${it.color}"
+            }
+        }
+        val periodSignature = cachedTimetablePeriods.joinToString(";") {
+            "${it.id},${it.periodNumber},${it.startHour},${it.startMinute},${it.durationMinutes}"
+        }
+        return listOf(
+            state.mondayMs,
+            state.weekNum,
+            state.renderLessons,
+            taskSignature.hashCode(),
+            lessonSignature.hashCode(),
+            periodSignature.hashCode()
+        ).joinToString("|")
+    }
+
+    private fun buildWeekScaffold(view: View, state: WeekFrameState) {
         val header = view.findViewById<LinearLayout>(R.id.week_header)
-        val body   = view.findViewById<LinearLayout>(R.id.week_body)
-        header.removeAllViews(); body.removeAllViews()
-        body.layoutParams = body.layoutParams.apply { width = bodyWidth }
+        val body = view.findViewById<LinearLayout>(R.id.week_body)
+        val dayNames = listOf("一", "二", "三", "四", "五", "六", "日")
+        val dayLabelFormat = SimpleDateFormat("dd", Locale.getDefault())
 
-        // 琛ㄥご
+        header.removeAllViews()
+        body.removeAllViews()
+        weekOverlayLayers.clear()
+        body.layoutParams = body.layoutParams.apply { width = state.bodyWidth }
+
         header.addView(View(requireContext()).apply {
-            layoutParams = LinearLayout.LayoutParams(timeColWidth, LinearLayout.LayoutParams.MATCH_PARENT)
+            layoutParams = LinearLayout.LayoutParams(state.timeColWidth, LinearLayout.LayoutParams.MATCH_PARENT)
         })
+
         for (i in 0..6) {
-            val dayCal = (monday.clone() as Calendar).apply { add(Calendar.DAY_OF_MONTH, i) }
+            val dayMs = state.mondayMs + i * DAY_MS
             header.addView(TextView(requireContext()).apply {
-                text = "${dayNames[i]}\n${SimpleDateFormat("dd", Locale.getDefault()).format(dayCal.time)}"
-                textSize = 11f; gravity = android.view.Gravity.CENTER
-                layoutParams = LinearLayout.LayoutParams(dayWidths[i], LinearLayout.LayoutParams.MATCH_PARENT)
+                text = "${dayNames[i]}\n${dayLabelFormat.format(Date(dayMs))}"
+                textSize = 11f
+                gravity = android.view.Gravity.CENTER
+                layoutParams = LinearLayout.LayoutParams(state.dayWidths[i], LinearLayout.LayoutParams.MATCH_PARENT)
             })
         }
 
-        val timeCol = android.widget.FrameLayout(requireContext()).apply {
-            layoutParams = LinearLayout.LayoutParams(timeColWidth, totalHeight)
-            setBackgroundColor(android.graphics.Color.parseColor("#F5F5F5"))
-        }
-        for (h in viewStartMin / 60..viewEndMin / 60) {
-            val topPx = ((h * 60 - viewStartMin) * pxPerMin).toInt()
-            timeCol.addView(TextView(requireContext()).apply {
-                text = String.format(Locale.getDefault(), "%02d:00", h)
-                textSize = 10f; setTextColor(android.graphics.Color.GRAY)
-                gravity = android.view.Gravity.CENTER_HORIZONTAL
-                layoutParams = android.widget.FrameLayout.LayoutParams(timeColWidth, android.widget.FrameLayout.LayoutParams.WRAP_CONTENT).apply {
-                    topMargin = maxOf(0, topPx - (6 * density).toInt())
-                }
-            })
-        }
-        body.addView(timeCol)
+        body.addView(buildWeekTimeColumn(state))
 
-        // 鏃ュ垪
         for (i in 0..6) {
-            val dayCal = (monday.clone() as Calendar).apply { add(Calendar.DAY_OF_MONTH, i) }
-            val dayStart = (dayCal.clone() as Calendar).apply { set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0) }.timeInMillis
-            val dayEnd   = dayStart + 86399999L
-            val dayOfWeek = i + 1
-
-            val dayCol = android.widget.FrameLayout(requireContext()).apply {
-                layoutParams = LinearLayout.LayoutParams(dayWidths[i], totalHeight)
+            val dayFrame = FrameLayout(requireContext()).apply {
+                layoutParams = LinearLayout.LayoutParams(state.dayWidths[i], state.totalHeight)
                 setBackgroundColor(android.graphics.Color.WHITE)
             }
+            dayFrame.addView(buildWeekDayGridLayer(state, state.dayWidths[i]))
+            val overlayLayer = FrameLayout(requireContext()).apply {
+                layoutParams = FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT
+                )
+            }
+            dayFrame.addView(overlayLayer)
+            weekOverlayLayers += overlayLayer
+            body.addView(dayFrame)
+        }
+    }
 
-            // 灏忔椂鏍肩嚎
-            for (h in viewStartMin / 60..viewEndMin / 60) {
-                val topPx = ((h * 60 - viewStartMin) * pxPerMin).toInt()
-                dayCol.addView(View(requireContext()).apply {
-                    layoutParams = android.widget.FrameLayout.LayoutParams(android.widget.FrameLayout.LayoutParams.MATCH_PARENT, 1).apply {
+    private fun buildWeekTimeColumn(state: WeekFrameState): FrameLayout {
+        return FrameLayout(requireContext()).apply {
+            layoutParams = LinearLayout.LayoutParams(state.timeColWidth, state.totalHeight)
+            setBackgroundColor(android.graphics.Color.parseColor("#F5F5F5"))
+            for (h in state.viewStartMin / 60..state.viewEndMin / 60) {
+                val topPx = ((h * 60 - state.viewStartMin) * state.pxPerMin).toInt()
+                addView(TextView(requireContext()).apply {
+                    text = String.format(Locale.getDefault(), "%02d:00", h)
+                    textSize = 10f
+                    setTextColor(android.graphics.Color.GRAY)
+                    gravity = android.view.Gravity.CENTER_HORIZONTAL
+                    layoutParams = FrameLayout.LayoutParams(
+                        state.timeColWidth,
+                        FrameLayout.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        topMargin = maxOf(0, topPx - (6 * state.density).toInt())
+                    }
+                })
+            }
+        }
+    }
+
+    private fun buildWeekDayGridLayer(state: WeekFrameState, dayWidth: Int): FrameLayout {
+        return FrameLayout(requireContext()).apply {
+            layoutParams = FrameLayout.LayoutParams(dayWidth, state.totalHeight)
+            for (h in state.viewStartMin / 60..state.viewEndMin / 60) {
+                val topPx = ((h * 60 - state.viewStartMin) * state.pxPerMin).toInt()
+                addView(View(requireContext()).apply {
+                    layoutParams = FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        1
+                    ).apply {
                         topMargin = topPx
                     }
                     setBackgroundColor(android.graphics.Color.parseColor("#E8E8E8"))
                 })
             }
+        }
+    }
 
-
-            val schedule   = cachedActiveSchedule
-            val mondayMs   = monday.timeInMillis
-            val weekNum    = if (schedule != null && schedule.semesterStart > 0)
-                CourseLesson.currentWeekNum(schedule.semesterStart, mondayMs) else -1
-
+    private fun renderWeekOverlays(state: WeekFrameState) {
+        for (i in 0..6) {
+            val overlayLayer = weekOverlayLayers.getOrNull(i) ?: continue
+            overlayLayer.removeAllViews()
+            val dayStart = state.startMs + i * DAY_MS
+            val dayEnd = dayStart + DAY_MS - 1
             val weekItems = buildWeekVisualItems(
-                dayOfWeek = dayOfWeek,
-                dayTasks = allTasks.filter { it.startTime?.let { ts -> ts in dayStart..dayEnd } ?: false },
-                weekNum = weekNum
+                dayOfWeek = i + 1,
+                dayTasks = state.allTasks.filter { it.startTime?.let { ts -> ts in dayStart..dayEnd } ?: false },
+                weekNum = state.weekNum,
+                includeLessons = state.renderLessons
             )
-            renderWeekVisualItems(dayCol, weekItems, dayWidths[i], viewStartMin, pxPerMin, density)
-
-            body.addView(dayCol)
+            renderWeekVisualItems(
+                overlayLayer,
+                weekItems,
+                state.dayWidths[i],
+                state.viewStartMin,
+                state.pxPerMin,
+                state.density
+            )
         }
     }
 
     private fun buildWeekVisualItems(
         dayOfWeek: Int,
         dayTasks: List<Task>,
-        weekNum: Int
+        weekNum: Int,
+        includeLessons: Boolean
     ): List<WeekVisualItem> {
-        val lessonItems = buildMergedLessonBlocks(cachedLessons.filter { it.dayOfWeek == dayOfWeek })
-            .mapIndexedNotNull { blockIndex, block ->
-                val lesson = block.lesson
-                val sMin = block.startMin
-                val eMin = block.endMin
-                if (sMin < 0 || eMin <= sMin) return@mapIndexedNotNull null
+        fun formatMinLabel(minuteOfDay: Int): String {
+            val hour = (minuteOfDay / 60).coerceIn(0, 23)
+            val minute = (minuteOfDay % 60).coerceIn(0, 59)
+            return String.format(Locale.getDefault(), "%02d:%02d", hour, minute)
+        }
 
-                val isCurrentWeek = weekNum < 0 || CourseLesson.isWeekActive(lesson.weekBitmap, weekNum)
-                val bgAlpha = if (isCurrentWeek) 0x55 else 0x1A
-                WeekVisualItem(
-                    startMin = sMin,
-                    endMin = eMin,
-                    text = if (lesson.classroom.isNotEmpty()) "${lesson.courseName}\n${lesson.classroom}" else lesson.courseName,
-                    backgroundColor = weekLessonSurfaceColor(lesson.color, blockIndex, bgAlpha),
-                    textColor = weekLessonTextColor(lesson.color, blockIndex),
-                    textAlpha = if (isCurrentWeek) 1f else 0.35f,
-                    centerOverlay = if (isCurrentWeek) null else "非本周"
-                )
-            }
+        val lessonItems = if (includeLessons) {
+            buildMergedLessonBlocks(cachedLessons.filter { it.dayOfWeek == dayOfWeek })
+                .mapIndexedNotNull { blockIndex, block ->
+                    val lesson = block.lesson
+                    val sMin = block.startMin
+                    val eMin = block.endMin
+                    if (sMin < 0 || eMin <= sMin) return@mapIndexedNotNull null
+
+                    val isCurrentWeek = weekNum < 0 || CourseLesson.isWeekActive(lesson.weekBitmap, weekNum)
+                    val bgAlpha = if (isCurrentWeek) 0x55 else 0x1A
+                    WeekVisualItem(
+                        startMin = sMin,
+                        endMin = eMin,
+                        startLabel = formatMinLabel(sMin),
+                        title = lesson.courseName,
+                        classroom = lesson.classroom.ifBlank { null },
+                        teacher = lesson.teacher.ifBlank { null },
+                        endLabel = formatMinLabel(eMin),
+                        backgroundColor = weekLessonSurfaceColor(lesson.color, blockIndex, bgAlpha),
+                        textColor = weekLessonTextColor(lesson.color, blockIndex),
+                        textAlpha = if (isCurrentWeek) 1f else 0.35f,
+                        centerOverlay = if (isCurrentWeek) null else "非本周"
+                    )
+                }
+        } else {
+            emptyList()
+        }
 
         val taskItems = dayTasks
             .map { task ->
@@ -396,7 +671,9 @@ class ScheduleFragment : Fragment() {
                 WeekVisualItem(
                     startMin = sMin,
                     endMin = maxOf(sMin + 30, eMin),
-                    text = task.title,
+                    startLabel = formatMinLabel(sMin),
+                    title = task.title,
+                    endLabel = formatMinLabel(maxOf(sMin + 30, eMin)),
                     backgroundColor = android.graphics.Color.parseColor("#E3F2FD"),
                     textColor = android.graphics.Color.BLACK,
                     onClick = {
@@ -469,20 +746,89 @@ class ScheduleFragment : Fragment() {
                 }
             }
 
-            cellContainer.addView(TextView(requireContext()).apply {
-                text = placed.item.text
+            val horizontalPadding = (4 * density).toInt()
+            val verticalPadding = (3 * density).toInt()
+            val titleView = TextView(requireContext()).apply {
+                text = placed.item.title
                 textSize = 10f
-                maxLines = 4
+                maxLines = 2
                 ellipsize = android.text.TextUtils.TruncateAt.END
                 setTextColor(placed.item.textColor)
-                alpha = placed.item.textAlpha
-                setPadding((3 * density).toInt(), (2 * density).toInt(), (3 * density).toInt(), (2 * density).toInt())
+                gravity = android.view.Gravity.CENTER_HORIZONTAL
+            }
+            val classroomView = placed.item.classroom?.let { classroomText ->
+                TextView(requireContext()).apply {
+                    text = classroomText
+                    textSize = 8f
+                    maxLines = 1
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                    setTextColor(placed.item.textColor)
+                    gravity = android.view.Gravity.CENTER_HORIZONTAL
+                }
+            }
+            val teacherView = placed.item.teacher?.let { teacherText ->
+                TextView(requireContext()).apply {
+                    text = teacherText
+                    textSize = 8f
+                    maxLines = 1
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                    setTextColor(placed.item.textColor)
+                    gravity = android.view.Gravity.CENTER_HORIZONTAL
+                }
+            }
+
+            val contentLayout = android.widget.LinearLayout(requireContext()).apply {
+                orientation = android.widget.LinearLayout.VERTICAL
                 setBackgroundColor(placed.item.backgroundColor)
+                alpha = placed.item.textAlpha
+                setPadding(horizontalPadding, verticalPadding, horizontalPadding, verticalPadding)
                 layoutParams = android.widget.FrameLayout.LayoutParams(
                     android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
                     android.widget.FrameLayout.LayoutParams.MATCH_PARENT
                 )
-            })
+
+                addView(TextView(requireContext()).apply {
+                    text = placed.item.startLabel
+                    textSize = 8f
+                    maxLines = 1
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                    setTextColor(placed.item.textColor)
+                })
+
+                addView(titleView)
+                classroomView?.let(::addView)
+                teacherView?.let(::addView)
+
+                addView(android.widget.Space(requireContext()).apply {
+                    layoutParams = android.widget.LinearLayout.LayoutParams(
+                        android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                        0,
+                        1f
+                    )
+                })
+
+                addView(TextView(requireContext()).apply {
+                    text = placed.item.endLabel
+                    textSize = 8f
+                    maxLines = 1
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                    setTextColor(placed.item.textColor)
+                    gravity = android.view.Gravity.START
+                })
+            }
+
+            cellContainer.addView(contentLayout)
+
+            if (placed.item.classroom != null || placed.item.teacher != null) {
+                val startEndLineHeight = (8f * resources.displayMetrics.scaledDensity * 1.25f).toInt()
+                val detailLineHeight = (8f * resources.displayMetrics.scaledDensity * 1.25f).toInt()
+                val titleLineHeight = (10f * resources.displayMetrics.scaledDensity * 1.25f).toInt()
+                val fixedHeight = verticalPadding * 2 + startEndLineHeight * 2 +
+                    detailLineHeight * listOfNotNull(placed.item.classroom, placed.item.teacher).size
+                val availableTitleHeight = (height - fixedHeight).coerceAtLeast(titleLineHeight)
+                val maxTitleLines = (availableTitleHeight / titleLineHeight).coerceAtLeast(1)
+                titleView.maxLines = maxTitleLines
+            }
 
             placed.item.centerOverlay?.let { overlayText ->
                 cellContainer.addView(TextView(requireContext()).apply {
@@ -509,18 +855,14 @@ class ScheduleFragment : Fragment() {
             .inflate(R.layout.view_month_schedule, contentFrame, false)
 
         v.findViewById<TextView>(R.id.btn_prev_month).setOnClickListener {
-            if (monthCompressed && selectedDayCalendar != null) {
-                selectedDayCalendar!!.add(Calendar.DAY_OF_MONTH, -1)
-                monthCalendar = selectedDayCalendar!!.clone() as Calendar
-            } else monthCalendar.add(Calendar.MONTH, -1)
-            renderCurrentTab()
+            animateHorizontalPageChange(direction = -1) {
+                shiftMonthPage(-1)
+            }
         }
         v.findViewById<TextView>(R.id.btn_next_month).setOnClickListener {
-            if (monthCompressed && selectedDayCalendar != null) {
-                selectedDayCalendar!!.add(Calendar.DAY_OF_MONTH, 1)
-                monthCalendar = selectedDayCalendar!!.clone() as Calendar
-            } else monthCalendar.add(Calendar.MONTH, 1)
-            renderCurrentTab()
+            animateHorizontalPageChange(direction = 1) {
+                shiftMonthPage(1)
+            }
         }
 
 
@@ -528,18 +870,14 @@ class ScheduleFragment : Fragment() {
         val selectedScrollRef = v.findViewById<ScrollView>(R.id.selected_day_scroll)
 
         swipeContainer.onSwipeLeft = {
-            if (monthCompressed && selectedDayCalendar != null) {
-                selectedDayCalendar!!.add(Calendar.DAY_OF_MONTH, 1)
-                monthCalendar = selectedDayCalendar!!.clone() as Calendar
-            } else monthCalendar.add(Calendar.MONTH, 1)
-            renderCurrentTab()
+            animateHorizontalPageChange(direction = 1) {
+                shiftMonthPage(1)
+            }
         }
         swipeContainer.onSwipeRight = {
-            if (monthCompressed && selectedDayCalendar != null) {
-                selectedDayCalendar!!.add(Calendar.DAY_OF_MONTH, -1)
-                monthCalendar = selectedDayCalendar!!.clone() as Calendar
-            } else monthCalendar.add(Calendar.MONTH, -1)
-            renderCurrentTab()
+            animateHorizontalPageChange(direction = -1) {
+                shiftMonthPage(-1)
+            }
         }
         swipeContainer.onSwipeDown = {
             if (monthCompressed) {
@@ -556,6 +894,15 @@ class ScheduleFragment : Fragment() {
         }
 
         return v
+    }
+
+    private fun shiftMonthPage(direction: Int) {
+        if (monthCompressed && selectedDayCalendar != null) {
+            selectedDayCalendar!!.add(Calendar.DAY_OF_MONTH, direction)
+            monthCalendar = selectedDayCalendar!!.clone() as Calendar
+        } else {
+            monthCalendar.add(Calendar.MONTH, direction)
+        }
     }
 
     private fun renderMonthContent(view: View) {
@@ -653,7 +1000,6 @@ class ScheduleFragment : Fragment() {
             selectedScroll.visibility = View.GONE
         }
     }
-
 
     // 閲嶅浠诲姟灞曞紑
 

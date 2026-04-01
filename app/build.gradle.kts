@@ -56,7 +56,6 @@ dependencies {
     implementation("androidx.navigation:navigation-ui-ktx:2.8.9")
 
     // WorkManager 提醒通知
-    implementation("androidx.work:work-runtime-ktx:2.9.1")
 
     // RecyclerView 列表
     implementation("androidx.recyclerview:recyclerview:1.3.2")

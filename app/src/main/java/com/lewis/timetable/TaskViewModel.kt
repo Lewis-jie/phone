@@ -6,6 +6,7 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.switchMap
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 class TaskViewModel(application: Application) : AndroidViewModel(application) {
@@ -16,6 +17,7 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
     val starredTasks: LiveData<List<Task>>
     val recentTags: LiveData<List<Tag>>
     val allTaskTagSummaries: LiveData<List<TaskTagSummary>>
+    private var tagColorsEnsured = false
 
     init {
         val db = AppDatabase.getDatabase(application)
@@ -25,7 +27,14 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         starredTasks = repository.starredTasks
         recentTags = repository.getRecentTags()
         allTaskTagSummaries = repository.allTaskTagSummaries
-        viewModelScope.launch { repository.ensureTagColors() }
+    }
+
+    fun ensureTagColorsIfNeeded() {
+        if (tagColorsEnsured) return
+        tagColorsEnsured = true
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.ensureTagColors()
+        }
     }
 
     private val _filterTag = MutableLiveData<String?>(null)
@@ -57,30 +66,19 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
     fun insertWithTags(task: Task, tagNames: List<String>) = viewModelScope.launch {
         val id = repository.insert(task)
         repository.setTagsForTask(id.toInt(), tagNames)
-        val saved = repository.getTaskByStartTime(task.startTime ?: return@launch)
-        saved?.let { ReminderScheduler.scheduleReminder(getApplication(), it) }
     }
 
     fun updateWithTags(task: Task, tagNames: List<String>) = viewModelScope.launch {
         repository.update(task)
         repository.setTagsForTask(task.id, tagNames)
-        ReminderScheduler.cancelReminder(getApplication(), task.id)
-        if (task.startTime != null && !task.isCompleted) {
-            ReminderScheduler.scheduleReminder(getApplication(), task)
-        }
     }
 
     fun update(task: Task) = viewModelScope.launch {
         repository.update(task)
-        ReminderScheduler.cancelReminder(getApplication(), task.id)
-        if (task.startTime != null && !task.isCompleted) {
-            ReminderScheduler.scheduleReminder(getApplication(), task)
-        }
     }
 
     fun delete(task: Task) = viewModelScope.launch {
         repository.delete(task)
-        ReminderScheduler.cancelReminder(getApplication(), task.id)
     }
 
     suspend fun getTagsForTask(taskId: Int): List<Tag> = repository.getTagsForTask(taskId)
@@ -95,7 +93,6 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
 
     fun completeAndGenerateNext(task: Task, tagNames: List<String>) = viewModelScope.launch {
         repository.update(task.copy(isCompleted = true))
-        ReminderScheduler.cancelReminder(getApplication(), task.id)
 
         val nextStartMs = RepeatTaskHelper.getNextStartTime(task) ?: return@launch
         val duration = (task.endTime ?: (task.startTime!! + 3600000L)) - task.startTime!!
@@ -112,13 +109,10 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         )
         val newId = repository.insert(nextTask)
         repository.setTagsForTask(newId.toInt(), tagNames)
-        val saved = repository.getTaskById(newId.toInt())
-        saved?.let { ReminderScheduler.scheduleReminder(getApplication(), it) }
     }
 
     fun deleteThisInstance(task: Task) = viewModelScope.launch {
         repository.delete(task)
-        ReminderScheduler.cancelReminder(getApplication(), task.id)
     }
 
     fun deleteAllRepeatInstances(task: Task) = viewModelScope.launch {

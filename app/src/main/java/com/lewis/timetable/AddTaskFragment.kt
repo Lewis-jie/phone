@@ -51,6 +51,7 @@ class AddTaskFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        viewModel.ensureTagColorsIfNeeded()
 
         // 主题色（仅用于背景/按钮，不再用于标题/返回箭头）
         val primaryColor = ThemeHelper.getPrimaryColor(requireContext())

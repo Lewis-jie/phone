@@ -105,30 +105,38 @@
                 android:textSize="12sp" />
         </LinearLayout>
 
-        <com.lewis.timetable.GestureGridView
-            android:id="@+id/month_grid"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:horizontalSpacing="0dp"
-            android:numColumns="7"
-            android:scrollbars="none"
-            android:stretchMode="columnWidth"
-            android:verticalSpacing="0dp" />
-
-        <ScrollView
-            android:id="@+id/selected_day_scroll"
+        <LinearLayout
+            android:id="@+id/month_content_container"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
-            android:scrollbars="none"
-            android:visibility="gone">
+            android:orientation="vertical">
 
-            <LinearLayout
-                android:id="@+id/selected_day_timeline"
+            <com.lewis.timetable.GestureGridView
+                android:id="@+id/month_grid"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:paddingBottom="16dp" />
-        </ScrollView>
+                android:horizontalSpacing="0dp"
+                android:numColumns="7"
+                android:scrollbars="none"
+                android:stretchMode="columnWidth"
+                android:verticalSpacing="0dp" />
+
+            <ScrollView
+                android:id="@+id/selected_day_scroll"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:scrollbars="none"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:id="@+id/selected_day_timeline"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:paddingBottom="16dp" />
+            </ScrollView>
+        </LinearLayout>
     </LinearLayout>
 </com.lewis.timetable.SwipeFrameLayout>
