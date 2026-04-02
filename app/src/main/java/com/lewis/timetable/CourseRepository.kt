@@ -4,7 +4,9 @@ import androidx.lifecycle.LiveData
 
 class CourseRepository(private val dao: CourseDao) {
 
-    val allSchedules: LiveData<List<CourseSchedule>> = dao.getAllSchedules()
+    val allSchedules: LiveData<List<CourseSchedule>> by lazy(LazyThreadSafetyMode.NONE) {
+        dao.getAllSchedules()
+    }
 
     suspend fun getAllSchedulesSync() = dao.getAllSchedulesSync()
     suspend fun getScheduleById(id: Int) = dao.getScheduleById(id)

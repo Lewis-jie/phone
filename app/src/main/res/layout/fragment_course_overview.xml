@@ -3,7 +3,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="?attr/colorSurface">
+    >
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -18,7 +18,7 @@
             android:layout_width="48dp"
             android:layout_height="48dp"
             android:gravity="center"
-            android:text="←"
+            android:text="@string/common_back_arrow"
             android:textSize="20sp"
             android:textColor="@android:color/black"
             android:clickable="true"
@@ -29,7 +29,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="课程总览"
+            android:text="@string/course_overview_title"
             android:textSize="18sp"
             android:textStyle="bold"
             android:textColor="@android:color/black" />
@@ -39,7 +39,7 @@
             android:layout_width="48dp"
             android:layout_height="48dp"
             android:gravity="center"
-            android:text="+"
+            android:text="@string/common_plus"
             android:textSize="24sp"
             android:textColor="@android:color/black"
             android:clickable="true"
@@ -52,7 +52,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center"
-        android:text="当前课表还没有课程"
+        android:text="@string/course_overview_empty"
         android:textSize="14sp"
         android:textColor="#666666"
         android:paddingTop="80dp" />

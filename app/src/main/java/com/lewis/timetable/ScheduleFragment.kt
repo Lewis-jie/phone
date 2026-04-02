@@ -12,9 +12,11 @@ import android.widget.*
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.navigation.fragment.findNavController
+import androidx.core.view.isEmpty
 import java.text.SimpleDateFormat
 import java.util.*
 import android.graphics.Color
+import com.google.android.material.color.MaterialColors
 
 class ScheduleFragment : Fragment() {
     companion object {
@@ -26,7 +28,7 @@ class ScheduleFragment : Fragment() {
     private lateinit var tabDay:       TextView
     private lateinit var tabWeek:      TextView
     private lateinit var tabMonth:     TextView
-    private lateinit var contentFrame: FrameLayout
+    private lateinit var contentFrame: AccessibleTouchFrameLayout
 
     private var currentTab           = 1
     private var dayCalendar          = Calendar.getInstance()
@@ -38,16 +40,45 @@ class ScheduleFragment : Fragment() {
 
     private var cachedAllTasks:         List<Task>             = emptyList()
     private var cachedRepeatTasks:      List<Task>             = emptyList()
+    private var cachedTaskTagColors:    Map<Int, Int>          = emptyMap()
+    private var cachedSchedules:        List<CourseSchedule>   = emptyList()
     private var cachedLessons:          List<CourseLesson>      = emptyList()
     private var cachedTimetablePeriods: List<TimetablePeriod>  = emptyList()
     private var cachedActiveSchedule:   CourseSchedule?        = null
+    private var hasObservedAllTasks                           = false
+    private var hasObservedRepeatTasks                        = false
+    private var hasObservedTaskTagColors                      = false
+    private var hasObservedSchedules                          = false
+    private var hasObservedLessons                            = false
+    private var hasObservedTimetablePeriods                   = false
+    private var hasObservedActiveSchedule                     = false
     private var currentContentView:     View?                  = null
     private var contentAnimator:        ViewPropertyAnimator?  = null
     private var isContentAnimating                           = false
     private var renderPosted                                 = false
     private var weekLayoutSignature: String?                 = null
     private var weekOverlaySignature: String?                = null
+    private var startupFullyDrawnReported                    = false
     private val weekOverlayLayers                           = mutableListOf<FrameLayout>()
+    private val swipeTouchListener = View.OnTouchListener { view, event ->
+        swipeDetector.onTouchEvent(event)
+        if (event.actionMasked == MotionEvent.ACTION_UP) {
+            view.performClick()
+        }
+        false
+    }
+    private val blockTouchListener = View.OnTouchListener { view, event ->
+        if (event.actionMasked == MotionEvent.ACTION_UP) {
+            view.performClick()
+        }
+        true
+    }
+    private val passThroughTouchListener = View.OnTouchListener { view, event ->
+        if (event.actionMasked == MotionEvent.ACTION_UP) {
+            view.performClick()
+        }
+        false
+    }
 
     private data class MergedLessonBlock(
         val lesson: CourseLesson,
@@ -89,6 +120,18 @@ class ScheduleFragment : Fragment() {
         val renderLessons: Boolean
     )
 
+    private data class SchedulePalette(
+        val primary: Int,
+        val primaryContainer: Int,
+        val onPrimary: Int,
+        val onPrimaryContainer: Int,
+        val surface: Int,
+        val surfaceVariant: Int,
+        val onSurface: Int,
+        val onSurfaceVariant: Int,
+        val outlineVariant: Int
+    )
+
 
     private lateinit var swipeDetector: GestureDetector
 
@@ -108,6 +151,7 @@ class ScheduleFragment : Fragment() {
         tabDay.setOnClickListener   { switchTab(0) }
         tabWeek.setOnClickListener  { switchTab(1) }
         tabMonth.setOnClickListener { switchTab(2) }
+        updateTabStyle()
 
 
         swipeDetector = GestureDetector(requireContext(),
@@ -125,29 +169,77 @@ class ScheduleFragment : Fragment() {
             })
 
         viewModel.allTasks.observe(viewLifecycleOwner) { tasks ->
+            hasObservedAllTasks = true
             cachedAllTasks = tasks
             requestRenderCurrentTab()
         }
+        viewModel.allTaskTagColorSummaries.observe(viewLifecycleOwner) { summaries ->
+            hasObservedTaskTagColors = true
+            cachedTaskTagColors = summaries.associate { it.taskId to it.tagColor }
+            requestRenderCurrentTab()
+        }
         viewModel.getRootRepeatTasks().observe(viewLifecycleOwner) { tasks ->
+            hasObservedRepeatTasks = true
             cachedRepeatTasks = tasks
+            requestRenderCurrentTab()
+        }
+        courseViewModel.allSchedules.observe(viewLifecycleOwner) { schedules ->
+            hasObservedSchedules = true
+            cachedSchedules = schedules
             requestRenderCurrentTab()
         }
         // 课程数据
         courseViewModel.activeLessons.observe(viewLifecycleOwner) { lessons ->
+            hasObservedLessons = true
             cachedLessons = lessons
             requestRenderCurrentTab()
         }
         courseViewModel.activeTimetablePeriods.observe(viewLifecycleOwner) { periods ->
+            hasObservedTimetablePeriods = true
             cachedTimetablePeriods = periods
             requestRenderCurrentTab()
         }
 
         courseViewModel.activeSchedule.observe(viewLifecycleOwner) { schedule ->
+            val hadObservedSchedule = hasObservedActiveSchedule
+            val previousScheduleId = cachedActiveSchedule?.id
+            val previousTimetableId = cachedActiveSchedule?.timetableId ?: 0
+            val nextScheduleId = schedule?.id
+            val nextTimetableId = schedule?.timetableId ?: 0
+
+            hasObservedActiveSchedule = true
+            if (hadObservedSchedule && previousScheduleId != nextScheduleId) {
+                cachedLessons = emptyList()
+                hasObservedLessons = false
+            }
+            if (hadObservedSchedule && (previousScheduleId != nextScheduleId || previousTimetableId != nextTimetableId)) {
+                cachedTimetablePeriods = emptyList()
+                hasObservedTimetablePeriods = nextTimetableId <= 0
+            }
             cachedActiveSchedule = schedule
             requestRenderCurrentTab()
         }
 
-        switchTab(currentTab)
+        contentFrame.post {
+            if (!isAdded || getView() == null) return@post
+            if (contentFrame.isEmpty()) {
+                switchTab(currentTab)
+            } else {
+                renderCurrentTab()
+            }
+        }
+    }
+
+    override fun onDestroyView() {
+        contentAnimator?.cancel()
+        contentAnimator = null
+        currentContentView = null
+        isContentAnimating = false
+        renderPosted = false
+        weekLayoutSignature = null
+        weekOverlaySignature = null
+        weekOverlayLayers.clear()
+        super.onDestroyView()
     }
 
 
@@ -156,8 +248,13 @@ class ScheduleFragment : Fragment() {
     private fun switchTab(tab: Int) {
         currentTab = tab
         updateTabStyle()
-        contentFrame.setOnTouchListener(null)
+        contentFrame.setOnTouchListener(passThroughTouchListener)
         contentFrame.removeAllViews()
+        if (tab == 1) {
+            weekLayoutSignature = null
+            weekOverlaySignature = null
+            weekOverlayLayers.clear()
+        }
 
         val v = when (tab) {
             0 -> inflateAndSetupDayView()
@@ -170,44 +267,80 @@ class ScheduleFragment : Fragment() {
 
 
         if (tab != 2) {
-            contentFrame.setOnTouchListener { _, ev -> swipeDetector.onTouchEvent(ev); false }
+            contentFrame.setOnTouchListener(swipeTouchListener)
         }
 
         renderCurrentTab()
     }
 
-    private fun getThemeColors(): Pair<Int, Int> {
-        val attrs = intArrayOf(
-            com.google.android.material.R.attr.colorPrimary,
-            com.google.android.material.R.attr.colorPrimaryContainer
+    private fun getSchedulePalette(): SchedulePalette {
+        val context = requireContext()
+        val primary = ThemeHelper.getPrimaryColor(context)
+        val surfaceBase = MaterialColors.getColor(
+            context,
+            com.google.android.material.R.attr.colorSurface,
+            Color.WHITE
         )
-        val ta = requireContext().obtainStyledAttributes(attrs)
-        val primary   = ta.getColor(0, 0)
-        val container = ta.getColor(1, 0)
-        ta.recycle()
-        return Pair(primary, container)
+        val onSurfaceBase = MaterialColors.getColor(
+            context,
+            com.google.android.material.R.attr.colorOnSurface,
+            Color.BLACK
+        )
+        val onSurfaceVariant = MaterialColors.getColor(
+            context,
+            com.google.android.material.R.attr.colorOnSurfaceVariant,
+            blendColors(surfaceBase, onSurfaceBase, 0.56f)
+        )
+        val tintedSurface = blendColors(surfaceBase, primary, 0.03f)
+        val tintedSurfaceVariant = blendColors(surfaceBase, primary, 0.08f)
+        val primaryContainer = blendColors(surfaceBase, primary, 0.18f)
+        val outlineBase = blendColors(surfaceBase, onSurfaceBase, 0.10f)
+        return SchedulePalette(
+            primary = primary,
+            primaryContainer = primaryContainer,
+            onPrimary = readableTextColor(primary),
+            onPrimaryContainer = readableTextColor(primaryContainer),
+            surface = tintedSurface,
+            surfaceVariant = tintedSurfaceVariant,
+            onSurface = onSurfaceBase,
+            onSurfaceVariant = onSurfaceVariant,
+            outlineVariant = blendColors(outlineBase, primary, 0.10f)
+        )
+    }
+
+    private fun applySchedulePageChrome(
+        view: View,
+        titleId: Int,
+        prevButtonId: Int,
+        nextButtonId: Int
+    ) {
+        val palette = getSchedulePalette()
+        view.setBackgroundColor(palette.surface)
+        view.findViewById<TextView>(titleId).setTextColor(palette.onSurface)
+        view.findViewById<TextView>(prevButtonId).setTextColor(palette.primary)
+        view.findViewById<TextView>(nextButtonId).setTextColor(palette.primary)
     }
 
     private fun attachSwipe(v: View) {
-        v.setOnTouchListener { _, ev -> swipeDetector.onTouchEvent(ev); false }
+        v.setOnTouchListener(swipeTouchListener)
         if (v is ViewGroup) for (i in 0 until v.childCount) attachSwipe(v.getChildAt(i))
     }
 
     private fun updateTabStyle() {
-        val (primaryColor, containerColor) = getThemeColors()
+        val palette = getSchedulePalette()
         fun makeBg(selected: Boolean) =
             android.graphics.drawable.GradientDrawable().apply {
                 shape = android.graphics.drawable.GradientDrawable.RECTANGLE
                 cornerRadius = 18 * resources.displayMetrics.density
-                
-                setColor(if (selected) primaryColor else containerColor)
+
+                setColor(if (selected) palette.primary else palette.primaryContainer)
             }
         tabDay.background = makeBg(currentTab == 0)
-        tabDay.setTextColor(android.graphics.Color.BLACK)
+        tabDay.setTextColor(if (currentTab == 0) palette.onPrimary else palette.onPrimaryContainer)
         tabWeek.background  = makeBg(currentTab == 1)
-        tabWeek.setTextColor(android.graphics.Color.BLACK)
+        tabWeek.setTextColor(if (currentTab == 1) palette.onPrimary else palette.onPrimaryContainer)
         tabMonth.background = makeBg(currentTab == 2)
-        tabMonth.setTextColor(android.graphics.Color.BLACK)
+        tabMonth.setTextColor(if (currentTab == 2) palette.onPrimary else palette.onPrimaryContainer)
     }
 
     private fun onSwipedLeft() {
@@ -248,7 +381,7 @@ class ScheduleFragment : Fragment() {
 
         isContentAnimating = true
         contentAnimator?.cancel()
-        contentFrame.setOnTouchListener { _, _ -> true }
+        contentFrame.setOnTouchListener(blockTouchListener)
 
         contentAnimator = content.animate()
             .translationX(exitTranslation)
@@ -298,9 +431,9 @@ class ScheduleFragment : Fragment() {
 
     private fun restoreSwipeHandler() {
         if (currentTab != 2) {
-            contentFrame.setOnTouchListener { _, ev -> swipeDetector.onTouchEvent(ev); false }
+            contentFrame.setOnTouchListener(swipeTouchListener)
         } else {
-            contentFrame.setOnTouchListener(null)
+            contentFrame.setOnTouchListener(passThroughTouchListener)
         }
     }
 
@@ -311,6 +444,7 @@ class ScheduleFragment : Fragment() {
             1 -> renderWeekContent(v)
             2 -> renderMonthContent(v)
         }
+        maybeReportStartupFullyDrawn()
     }
 
     private fun requestRenderCurrentTab() {
@@ -322,6 +456,43 @@ class ScheduleFragment : Fragment() {
             if (!isAdded || view == null) return@post
             renderCurrentTab()
         }
+    }
+
+    private fun maybeReportStartupFullyDrawn() {
+        if (startupFullyDrawnReported) return
+        val isReady = when (currentTab) {
+            1 -> isWeekDataReady()
+            else -> currentContentView != null
+        }
+        if (!isReady) return
+        val activity = activity as? MainActivity ?: return
+        startupFullyDrawnReported = true
+        contentFrame.post { activity.reportStartupFullyDrawnOnce() }
+    }
+
+    private fun isWeekDataReady(): Boolean {
+        if (!hasObservedAllTasks || !hasObservedRepeatTasks || !hasObservedTaskTagColors) {
+            return false
+        }
+
+        val selectedScheduleId = courseViewModel.getSelectedId()
+        if (selectedScheduleId > 0) {
+            if (!hasObservedSchedules || !hasObservedActiveSchedule) {
+                return false
+            }
+
+            val selectedExists = cachedSchedules.any { it.id == selectedScheduleId }
+            if (!selectedExists) {
+                return true
+            }
+        } else if (!hasObservedActiveSchedule) {
+            return false
+        }
+
+        val activeSchedule = cachedActiveSchedule ?: return selectedScheduleId <= 0
+        if (!hasObservedLessons) return false
+        if (activeSchedule.timetableId > 0 && !hasObservedTimetablePeriods) return false
+        return true
     }
 
 
@@ -345,6 +516,9 @@ class ScheduleFragment : Fragment() {
 
     private fun renderDayContent(view: View) {
         val cal = dayCalendar
+        val palette = getSchedulePalette()
+        applySchedulePageChrome(view, R.id.tv_day_title, R.id.btn_prev_day, R.id.btn_next_day)
+        view.findViewById<ScrollView>(R.id.day_scroll_view).setBackgroundColor(palette.surface)
         view.findViewById<TextView>(R.id.tv_day_title).text =
             SimpleDateFormat("yyyy年MM月dd日 EEEE", Locale.CHINESE).format(cal.time)
 
@@ -377,11 +551,23 @@ class ScheduleFragment : Fragment() {
     }
 
     private fun renderWeekContent(view: View) {
-        val state = buildWeekFrameState()
-
+        applySchedulePageChrome(view, R.id.tv_week_title, R.id.btn_prev_week, R.id.btn_next_week)
         val fmt = SimpleDateFormat("MM/dd", Locale.getDefault())
-        view.findViewById<TextView>(R.id.tv_week_title).text =
-            "${fmt.format(state.monday.time)} ~ ${fmt.format(state.sunday.time)}"
+        val titleView = view.findViewById<TextView>(R.id.tv_week_title)
+        val monday = CourseFragment.mondayOf(weekCalendar)
+        val sunday = (monday.clone() as Calendar).apply { add(Calendar.DAY_OF_MONTH, 6) }
+        titleView.text = getString(
+            R.string.format_range,
+            fmt.format(monday.time),
+            fmt.format(sunday.time)
+        )
+
+        val state = buildWeekFrameState()
+        titleView.text = getString(
+            R.string.format_range,
+            fmt.format(state.monday.time),
+            fmt.format(state.sunday.time)
+        )
 
         val layoutSignature = buildWeekLayoutSignature(state)
         if (layoutSignature != weekLayoutSignature || weekOverlayLayers.size != 7) {
@@ -390,10 +576,35 @@ class ScheduleFragment : Fragment() {
             weekOverlaySignature = null
         }
 
+        if (!isWeekDataReady()) {
+            clearWeekOverlays()
+            weekOverlaySignature = "pending"
+            updateWeekEmptyState(view, getString(R.string.schedule_week_loading))
+            return
+        }
+
         val overlaySignature = buildWeekOverlaySignature(state)
         if (overlaySignature != weekOverlaySignature) {
             renderWeekOverlays(state)
             weekOverlaySignature = overlaySignature
+        }
+
+        val hasVisibleItems = state.allTasks.isNotEmpty() || (state.renderLessons && cachedLessons.isNotEmpty())
+        updateWeekEmptyState(
+            view,
+            when {
+                !isWeekDataReady() -> getString(R.string.schedule_week_loading)
+                hasVisibleItems -> null
+                else -> getString(R.string.schedule_week_empty)
+            }
+        )
+    }
+
+    private fun clearWeekOverlays() {
+        weekOverlayLayers.forEach { overlayLayer ->
+            if (overlayLayer.childCount > 0) {
+                overlayLayer.removeAllViews()
+            }
         }
     }
 
@@ -434,10 +645,14 @@ class ScheduleFragment : Fragment() {
             }
         }
 
-        if (!renderLessons && !hasTimetablePeriods) {
-            allTasks.forEach { task ->
-                task.startTime?.let { viewStartMin = minOf(viewStartMin, hourOf(it) * 60) }
-                task.endTime?.let { viewEndMin = maxOf(viewEndMin, (hourOf(it) + 1) * 60) }
+        allTasks.forEach { task ->
+            val taskStartMin = task.startTime?.let(::minuteOfDay)
+            val taskEndMin = (task.endTime ?: task.startTime?.plus(3_600_000L))?.let(::minuteOfDay)
+
+            taskStartMin?.let { viewStartMin = minOf(viewStartMin, (it / 60) * 60) }
+            taskEndMin?.let {
+                val effectiveEndMin = maxOf((taskStartMin ?: it) + 30, it)
+                viewEndMin = maxOf(viewEndMin, ((effectiveEndMin + 59) / 60) * 60)
             }
         }
 
@@ -513,11 +728,18 @@ class ScheduleFragment : Fragment() {
     }
 
     private fun buildWeekScaffold(view: View, state: WeekFrameState) {
+        val palette = getSchedulePalette()
         val header = view.findViewById<LinearLayout>(R.id.week_header)
         val body = view.findViewById<LinearLayout>(R.id.week_body)
+        val scrollView = view.findViewById<ScrollView>(R.id.week_scroll_view)
+        val horizontalScroll = view.findViewById<HorizontalScrollView>(R.id.week_horizontal_scroll)
         val dayNames = listOf("一", "二", "三", "四", "五", "六", "日")
         val dayLabelFormat = SimpleDateFormat("dd", Locale.getDefault())
 
+        view.setBackgroundColor(palette.surface)
+        header.setBackgroundColor(palette.surfaceVariant)
+        scrollView.setBackgroundColor(palette.surface)
+        horizontalScroll.setBackgroundColor(palette.surface)
         header.removeAllViews()
         body.removeAllViews()
         weekOverlayLayers.clear()
@@ -525,26 +747,38 @@ class ScheduleFragment : Fragment() {
 
         header.addView(View(requireContext()).apply {
             layoutParams = LinearLayout.LayoutParams(state.timeColWidth, LinearLayout.LayoutParams.MATCH_PARENT)
+            setBackgroundColor(palette.surfaceVariant)
         })
 
         for (i in 0..6) {
             val dayMs = state.mondayMs + i * DAY_MS
             header.addView(TextView(requireContext()).apply {
-                text = "${dayNames[i]}\n${dayLabelFormat.format(Date(dayMs))}"
+                text = getString(
+                    R.string.format_day_date,
+                    dayNames[i],
+                    dayLabelFormat.format(Date(dayMs))
+                )
                 textSize = 11f
+                setTextColor(palette.onSurface)
                 gravity = android.view.Gravity.CENTER
                 layoutParams = LinearLayout.LayoutParams(state.dayWidths[i], LinearLayout.LayoutParams.MATCH_PARENT)
             })
         }
 
-        body.addView(buildWeekTimeColumn(state))
+        body.addView(buildWeekTimeColumn(state, palette))
 
         for (i in 0..6) {
             val dayFrame = FrameLayout(requireContext()).apply {
                 layoutParams = LinearLayout.LayoutParams(state.dayWidths[i], state.totalHeight)
-                setBackgroundColor(android.graphics.Color.WHITE)
+                setBackgroundColor(if (i % 2 == 0) palette.surface else palette.surfaceVariant)
             }
-            dayFrame.addView(buildWeekDayGridLayer(state, state.dayWidths[i]))
+            if (i > 0) {
+                dayFrame.addView(View(requireContext()).apply {
+                    layoutParams = FrameLayout.LayoutParams(1, FrameLayout.LayoutParams.MATCH_PARENT)
+                    setBackgroundColor(palette.outlineVariant)
+                })
+            }
+            dayFrame.addView(buildWeekDayGridLayer(state, state.dayWidths[i], palette))
             val overlayLayer = FrameLayout(requireContext()).apply {
                 layoutParams = FrameLayout.LayoutParams(
                     FrameLayout.LayoutParams.MATCH_PARENT,
@@ -557,16 +791,41 @@ class ScheduleFragment : Fragment() {
         }
     }
 
-    private fun buildWeekTimeColumn(state: WeekFrameState): FrameLayout {
+    private fun updateWeekEmptyState(view: View, message: String?) {
+        val emptyView = view.findViewById<TextView>(R.id.week_empty_state)
+        if (message.isNullOrBlank()) {
+            emptyView.visibility = View.GONE
+            return
+        }
+
+        val palette = getSchedulePalette()
+        val density = resources.displayMetrics.density
+        emptyView.text = message
+        emptyView.setTextColor(palette.onSurfaceVariant)
+        emptyView.background = android.graphics.drawable.GradientDrawable().apply {
+            shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+            cornerRadius = 14f * density
+            setColor(blendColors(palette.surface, palette.primary, 0.10f))
+        }
+        emptyView.setPadding(
+            (18 * density).toInt(),
+            (12 * density).toInt(),
+            (18 * density).toInt(),
+            (12 * density).toInt()
+        )
+        emptyView.visibility = View.VISIBLE
+    }
+
+    private fun buildWeekTimeColumn(state: WeekFrameState, palette: SchedulePalette): FrameLayout {
         return FrameLayout(requireContext()).apply {
             layoutParams = LinearLayout.LayoutParams(state.timeColWidth, state.totalHeight)
-            setBackgroundColor(android.graphics.Color.parseColor("#F5F5F5"))
+            setBackgroundColor(palette.surfaceVariant)
             for (h in state.viewStartMin / 60..state.viewEndMin / 60) {
                 val topPx = ((h * 60 - state.viewStartMin) * state.pxPerMin).toInt()
                 addView(TextView(requireContext()).apply {
                     text = String.format(Locale.getDefault(), "%02d:00", h)
                     textSize = 10f
-                    setTextColor(android.graphics.Color.GRAY)
+                    setTextColor(palette.onSurfaceVariant)
                     gravity = android.view.Gravity.CENTER_HORIZONTAL
                     layoutParams = FrameLayout.LayoutParams(
                         state.timeColWidth,
@@ -579,7 +838,7 @@ class ScheduleFragment : Fragment() {
         }
     }
 
-    private fun buildWeekDayGridLayer(state: WeekFrameState, dayWidth: Int): FrameLayout {
+    private fun buildWeekDayGridLayer(state: WeekFrameState, dayWidth: Int, palette: SchedulePalette): FrameLayout {
         return FrameLayout(requireContext()).apply {
             layoutParams = FrameLayout.LayoutParams(dayWidth, state.totalHeight)
             for (h in state.viewStartMin / 60..state.viewEndMin / 60) {
@@ -591,7 +850,7 @@ class ScheduleFragment : Fragment() {
                     ).apply {
                         topMargin = topPx
                     }
-                    setBackgroundColor(android.graphics.Color.parseColor("#E8E8E8"))
+                    setBackgroundColor(palette.outlineVariant)
                 })
             }
         }
@@ -668,14 +927,15 @@ class ScheduleFragment : Fragment() {
                 val eCal = Calendar.getInstance().apply { timeInMillis = taskEnd }
                 val sMin = sCal.get(Calendar.HOUR_OF_DAY) * 60 + sCal.get(Calendar.MINUTE)
                 val eMin = eCal.get(Calendar.HOUR_OF_DAY) * 60 + eCal.get(Calendar.MINUTE)
+                val taskColor = resolveTaskColor(task)
                 WeekVisualItem(
                     startMin = sMin,
                     endMin = maxOf(sMin + 30, eMin),
                     startLabel = formatMinLabel(sMin),
                     title = task.title,
                     endLabel = formatMinLabel(maxOf(sMin + 30, eMin)),
-                    backgroundColor = android.graphics.Color.parseColor("#E3F2FD"),
-                    textColor = android.graphics.Color.BLACK,
+                    backgroundColor = taskColor,
+                    textColor = weekTaskTextColor(taskColor),
                     onClick = {
                         if (task.id > 0) findNavController().navigate(
                             R.id.action_schedule_to_addTask,
@@ -820,9 +1080,10 @@ class ScheduleFragment : Fragment() {
             cellContainer.addView(contentLayout)
 
             if (placed.item.classroom != null || placed.item.teacher != null) {
-                val startEndLineHeight = (8f * resources.displayMetrics.scaledDensity * 1.25f).toInt()
-                val detailLineHeight = (8f * resources.displayMetrics.scaledDensity * 1.25f).toInt()
-                val titleLineHeight = (10f * resources.displayMetrics.scaledDensity * 1.25f).toInt()
+                val scaledDensity = resources.displayMetrics.density * resources.configuration.fontScale
+                val startEndLineHeight = (8f * scaledDensity * 1.25f).toInt()
+                val detailLineHeight = (8f * scaledDensity * 1.25f).toInt()
+                val titleLineHeight = (10f * scaledDensity * 1.25f).toInt()
                 val fixedHeight = verticalPadding * 2 + startEndLineHeight * 2 +
                     detailLineHeight * listOfNotNull(placed.item.classroom, placed.item.teacher).size
                 val availableTitleHeight = (height - fixedHeight).coerceAtLeast(titleLineHeight)
@@ -831,10 +1092,11 @@ class ScheduleFragment : Fragment() {
             }
 
             placed.item.centerOverlay?.let { overlayText ->
+                val palette = getSchedulePalette()
                 cellContainer.addView(TextView(requireContext()).apply {
                     text = overlayText
                     textSize = 8f
-                    setTextColor(Color.parseColor("#888888"))
+                    setTextColor(palette.onSurfaceVariant)
                     gravity = android.view.Gravity.CENTER
                     layoutParams = android.widget.FrameLayout.LayoutParams(
                         android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
@@ -897,27 +1159,42 @@ class ScheduleFragment : Fragment() {
     }
 
     private fun shiftMonthPage(direction: Int) {
-        if (monthCompressed && selectedDayCalendar != null) {
-            selectedDayCalendar!!.add(Calendar.DAY_OF_MONTH, direction)
-            monthCalendar = selectedDayCalendar!!.clone() as Calendar
+        val selectedCal = selectedDayCalendar
+        if (monthCompressed && selectedCal != null) {
+            selectedCal.add(Calendar.DAY_OF_MONTH, direction)
+            monthCalendar = selectedCal.clone() as Calendar
         } else {
             monthCalendar.add(Calendar.MONTH, direction)
         }
     }
 
     private fun renderMonthContent(view: View) {
-        val displayCal = if (monthCompressed && selectedDayCalendar != null)
-            selectedDayCalendar!!.clone() as Calendar
+        val palette = getSchedulePalette()
+        applySchedulePageChrome(view, R.id.tv_month_title, R.id.btn_prev_month, R.id.btn_next_month)
+        val selectedCal = selectedDayCalendar
+        val displayCal = if (monthCompressed && selectedCal != null)
+            selectedCal.clone() as Calendar
         else monthCalendar.clone() as Calendar
 
-        val titleSrc = if (monthCompressed && selectedDayCalendar != null)
-            selectedDayCalendar!!.time else monthCalendar.time
+        val titleSrc = if (monthCompressed && selectedCal != null)
+            selectedCal.time else monthCalendar.time
         view.findViewById<TextView>(R.id.tv_month_title).text =
             SimpleDateFormat("yyyy年MM月", Locale.CHINESE).format(titleSrc)
 
+        val weekdayRow     = view.findViewById<LinearLayout>(R.id.month_weekday_row)
         val grid           = view.findViewById<GestureGridView>(R.id.month_grid)
         val selectedScroll = view.findViewById<ScrollView>(R.id.selected_day_scroll)
         val selectedTL     = view.findViewById<LinearLayout>(R.id.selected_day_timeline)
+        val monthContainer = view.findViewById<View>(R.id.month_content_container)
+
+        weekdayRow.setBackgroundColor(palette.surfaceVariant)
+        for (index in 0 until weekdayRow.childCount) {
+            (weekdayRow.getChildAt(index) as? TextView)?.setTextColor(palette.onSurfaceVariant)
+        }
+        grid.setBackgroundColor(palette.surface)
+        selectedScroll.setBackgroundColor(palette.surface)
+        selectedTL.setBackgroundColor(palette.surface)
+        monthContainer.setBackgroundColor(palette.surface)
 
         val first         = (displayCal.clone() as Calendar).apply { set(Calendar.DAY_OF_MONTH, 1) }
         val startDow      = ((first.get(Calendar.DAY_OF_WEEK) + 5) % 7)
@@ -961,7 +1238,7 @@ class ScheduleFragment : Fragment() {
         val rowHeight = if (monthCompressed) 44 else 80
         grid.adapter = MonthDayAdapter(
             requireContext(), cells, displayCal, today, taskDays,
-            selectedDayCalendar, rowHeight, tasksByDay, monthCompressed
+            selectedDayCalendar, rowHeight, tasksByDay, cachedTaskTagColors, monthCompressed
         ) { day ->
             val newSel = (displayCal.clone() as Calendar).apply { set(Calendar.DAY_OF_MONTH, day) }
             selectedDayCalendar = newSel
@@ -989,9 +1266,9 @@ class ScheduleFragment : Fragment() {
             })
 
         // 压缩模式下显示当天时间轴
-        if (monthCompressed && selectedDayCalendar != null) {
+        if (monthCompressed && selectedCal != null) {
             selectedScroll.visibility = View.VISIBLE
-            val (ds, de) = dayRange(selectedDayCalendar!!)
+            val (ds, de) = dayRange(selectedCal)
             val dayTasks = allTasks
                 .filter { it.startTime?.let { t -> t in ds..de } ?: false }
                 .filter { !it.isCompleted }
@@ -1023,9 +1300,11 @@ class ScheduleFragment : Fragment() {
     private fun buildTimeline(container: LinearLayout, tasks: List<Task>) {
         container.removeAllViews()
         if (tasks.isEmpty()) {
+            val palette = getSchedulePalette()
             container.addView(TextView(requireContext()).apply {
-                text = "当天没有任务"; textSize = 14f
+                text = getString(R.string.schedule_day_empty); textSize = 14f
                 gravity = android.view.Gravity.CENTER
+                setTextColor(palette.onSurfaceVariant)
                 setPadding(0, 48, 0, 0)
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
@@ -1047,12 +1326,21 @@ class ScheduleFragment : Fragment() {
             tasksByHour[h].orEmpty()
                 .forEach { task ->
                     val tv = inflater.inflate(R.layout.item_schedule_task, hourContainer, false)
+                    val taskColor = resolveTaskColor(task)
                     tv.findViewById<TextView>(R.id.tv_task_title).text = task.title
+                    tv.findViewById<TextView>(R.id.tv_task_title).setTextColor(weekTaskTextColor(taskColor))
                     val fmt = SimpleDateFormat("HH:mm", Locale.getDefault())
                     val s = task.startTime?.let { fmt.format(java.util.Date(it)) } ?: ""
                     val e = task.endTime?.let   { fmt.format(java.util.Date(it)) } ?: ""
                     tv.findViewById<TextView>(R.id.tv_task_time).text =
                         if (s.isNotEmpty()) "$s - $e" else ""
+                    tv.findViewById<TextView>(R.id.tv_task_time).setTextColor(weekTaskTextColor(taskColor))
+                    tv.findViewById<View>(R.id.view_schedule_stripe).setBackgroundColor(taskColor)
+                    tv.background = android.graphics.drawable.GradientDrawable().apply {
+                        shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+                        cornerRadius = 6f * resources.displayMetrics.density
+                        setColor(wkAlphaBlend(taskColor, 0x58))
+                    }
                     tv.setOnClickListener {
                         if (task.id > 0) findNavController().navigate(
                             R.id.action_schedule_to_addTask,
@@ -1088,6 +1376,10 @@ class ScheduleFragment : Fragment() {
         set(Calendar.MILLISECOND, 999)
     }
     private fun hourOf(ms: Long) = Calendar.getInstance().apply { timeInMillis = ms }.get(Calendar.HOUR_OF_DAY)
+    private fun minuteOfDay(ms: Long): Int {
+        val cal = Calendar.getInstance().apply { timeInMillis = ms }
+        return cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
+    }
 
     private fun getSlotStartMin(slotIndex: Int): Int {
         return CourseLesson.resolveSlotStartMin(slotIndex, cachedTimetablePeriods)
@@ -1168,11 +1460,47 @@ class ScheduleFragment : Fragment() {
         return shiftWeekColor(base, if (blockIndex % 2 == 0) -0.015f else -0.07f)
     }
 
+    private fun resolveTaskColor(task: Task): Int {
+        val candidateIds = listOf(
+            task.id.takeIf { it > 0 },
+            task.parentTaskId.takeIf { it > 0 },
+            kotlin.math.abs(task.id).takeIf { it > 0 }
+        )
+        val baseColor = candidateIds
+            .mapNotNull { it }
+            .firstNotNullOfOrNull { cachedTaskTagColors[it]?.takeIf { color -> color != 0 } }
+            ?: TagColorManager.NO_TAG_COLOR
+        return wkAlphaBlend(baseColor, 0x42)
+    }
+
+    private fun weekTaskTextColor(color: Int): Int {
+        return shiftWeekColor(wkDarken(color), -0.08f)
+    }
+
     private fun shiftWeekColor(color: Int, deltaValue: Float): Int {
         val hsv = FloatArray(3)
         android.graphics.Color.colorToHSV(color, hsv)
         hsv[2] = (hsv[2] + deltaValue).coerceIn(0f, 1f)
         return android.graphics.Color.HSVToColor(hsv)
+    }
+
+    private fun blendColors(from: Int, to: Int, ratio: Float): Int {
+        val clampedRatio = ratio.coerceIn(0f, 1f)
+        val inverse = 1f - clampedRatio
+        return Color.rgb(
+            (Color.red(from) * inverse + Color.red(to) * clampedRatio).toInt(),
+            (Color.green(from) * inverse + Color.green(to) * clampedRatio).toInt(),
+            (Color.blue(from) * inverse + Color.blue(to) * clampedRatio).toInt()
+        )
+    }
+
+    private fun readableTextColor(backgroundColor: Int): Int {
+        val luminance = (
+            0.299 * Color.red(backgroundColor) +
+                0.587 * Color.green(backgroundColor) +
+                0.114 * Color.blue(backgroundColor)
+            ) / 255.0
+        return if (luminance >= 0.62) Color.BLACK else Color.WHITE
     }
 }
 

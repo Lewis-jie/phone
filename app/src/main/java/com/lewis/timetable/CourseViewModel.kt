@@ -2,6 +2,7 @@
 
 import android.app.Application
 import android.content.Context
+import androidx.core.content.edit
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
@@ -13,36 +14,44 @@ class CourseViewModel(application: Application) : AndroidViewModel(application) 
 
     private val repo: CourseRepository
     private val timetableRepo: TimetableRepository
-    val allSchedules: LiveData<List<CourseSchedule>>
-    val allTimetables: LiveData<List<Timetable>>
+    val allSchedules: LiveData<List<CourseSchedule>> by lazy(LazyThreadSafetyMode.NONE) {
+        repo.allSchedules
+    }
+    val allTimetables: LiveData<List<Timetable>> by lazy(LazyThreadSafetyMode.NONE) {
+        timetableRepo.allTimetables
+    }
 
     private val _selectedId = MutableLiveData<Int>()
 
-    val activeLessons: LiveData<List<CourseLesson>> = _selectedId.switchMap { id ->
-        if (id <= 0) MutableLiveData(emptyList())
-        else repo.getLessonsForSchedule(id)
-    }
-
-    val activeTimetablePeriods: LiveData<List<TimetablePeriod>> = _selectedId.switchMap { id ->
-        if (id <= 0) return@switchMap MutableLiveData(emptyList())
-        repo.getScheduleByIdLive(id).switchMap { schedule ->
-            val timetableId = schedule?.timetableId ?: 0
-            if (timetableId <= 0) MutableLiveData(emptyList())
-            else timetableRepo.getPeriodsForTimetable(timetableId)
+    val activeLessons: LiveData<List<CourseLesson>> by lazy(LazyThreadSafetyMode.NONE) {
+        _selectedId.switchMap { id ->
+            if (id <= 0) MutableLiveData(emptyList())
+            else repo.getLessonsForSchedule(id)
         }
     }
 
-    val activeSchedule: LiveData<CourseSchedule?> = _selectedId.switchMap { id ->
-        if (id <= 0) MutableLiveData(null)
-        else repo.getScheduleByIdLive(id)
+    val activeTimetablePeriods: LiveData<List<TimetablePeriod>> by lazy(LazyThreadSafetyMode.NONE) {
+        _selectedId.switchMap { id ->
+            if (id <= 0) return@switchMap MutableLiveData(emptyList())
+            repo.getScheduleByIdLive(id).switchMap { schedule ->
+                val timetableId = schedule?.timetableId ?: 0
+                if (timetableId <= 0) MutableLiveData(emptyList())
+                else timetableRepo.getPeriodsForTimetable(timetableId)
+            }
+        }
+    }
+
+    val activeSchedule: LiveData<CourseSchedule?> by lazy(LazyThreadSafetyMode.NONE) {
+        _selectedId.switchMap { id ->
+            if (id <= 0) MutableLiveData(null)
+            else repo.getScheduleByIdLive(id)
+        }
     }
 
     init {
         val db = AppDatabase.getDatabase(application)
         repo = CourseRepository(db.courseDao())
         timetableRepo = TimetableRepository(db.timetableDao())
-        allSchedules = repo.allSchedules
-        allTimetables = timetableRepo.allTimetables
         val prefs = application.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
         _selectedId.value = prefs.getInt("active_schedule_id", 0)
     }
@@ -51,7 +60,9 @@ class CourseViewModel(application: Application) : AndroidViewModel(application) 
         _selectedId.value = id
         getApplication<Application>()
             .getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
-            .edit().putInt("active_schedule_id", id).apply()
+            .edit {
+                putInt("active_schedule_id", id)
+            }
     }
 
     fun getSelectedId(): Int = _selectedId.value ?: 0
@@ -120,6 +131,7 @@ class CourseViewModel(application: Application) : AndroidViewModel(application) 
 
     fun saveTimetable(
         timetableId: Int,
+        bindScheduleId: Int,
         name: String,
         sameDuration: Boolean,
         durationMinutes: Int,
@@ -132,6 +144,12 @@ class CourseViewModel(application: Application) : AndroidViewModel(application) 
             ).toInt()
             val withId = periods.map { it.copy(timetableId = newId) }
             timetableRepo.replacePeriods(newId, withId)
+            if (bindScheduleId > 0) {
+                repo.getScheduleById(bindScheduleId)?.let { schedule ->
+                    repo.updateSchedule(schedule.copy(timetableId = newId))
+                    selectSchedule(bindScheduleId)
+                }
+            }
             onDone(newId)
         } else {
             val existing = timetableRepo.getTimetableById(timetableId) ?: return@launch
@@ -144,6 +162,14 @@ class CourseViewModel(application: Application) : AndroidViewModel(application) 
             )
             val withId = periods.map { it.copy(timetableId = timetableId) }
             timetableRepo.replacePeriods(timetableId, withId)
+            if (bindScheduleId > 0) {
+                repo.getScheduleById(bindScheduleId)?.let { schedule ->
+                    if (schedule.timetableId != timetableId) {
+                        repo.updateSchedule(schedule.copy(timetableId = timetableId))
+                    }
+                    selectSchedule(bindScheduleId)
+                }
+            }
             onDone(timetableId)
         }
     }

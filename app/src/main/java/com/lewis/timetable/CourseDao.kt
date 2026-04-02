@@ -41,8 +41,14 @@ interface CourseDao {
     @Query("SELECT * FROM course_lessons WHERE id = :id")
     suspend fun getLessonById(id: Int): CourseLesson?
 
+    @Query("SELECT * FROM course_lessons ORDER BY scheduleId ASC, dayOfWeek ASC, slotIndex ASC, id ASC")
+    suspend fun getAllLessonsSync(): List<CourseLesson>
+
     @Insert
     suspend fun insertLessons(lessons: List<CourseLesson>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertSchedules(schedules: List<CourseSchedule>)
 
     @Insert
     suspend fun insertLesson(lesson: CourseLesson): Long

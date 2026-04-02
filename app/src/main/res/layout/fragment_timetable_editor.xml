@@ -3,7 +3,6 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#F4F7FB"
     android:orientation="vertical">
 
     <LinearLayout
@@ -19,9 +18,10 @@
             android:layout_height="48dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:clickable="true"
+            android:contentDescription="@string/common_back"
             android:focusable="true"
             android:gravity="center"
-            android:text="←"
+            android:text="@string/common_back_arrow"
             android:textColor="@android:color/black"
             android:textSize="20sp" />
 
@@ -29,7 +29,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="编辑时间表"
+            android:text="@string/timetable_editor_title"
             android:textColor="@android:color/black"
             android:textSize="20sp"
             android:textStyle="bold" />
@@ -42,7 +42,7 @@
             android:clickable="true"
             android:focusable="true"
             android:paddingHorizontal="8dp"
-            android:text="保存"
+            android:text="@string/common_save"
             android:textColor="?attr/colorPrimary"
             android:textSize="15sp"
             android:textStyle="bold" />
@@ -81,7 +81,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="时间表名称"
+                        android:text="@string/timetable_name_label"
                         android:textColor="#6F7C8E"
                         android:textSize="12sp" />
 
@@ -91,7 +91,8 @@
                         android:layout_height="48dp"
                         android:layout_marginTop="8dp"
                         android:background="@android:color/transparent"
-                        android:hint="输入名称"
+                        android:hint="@string/timetable_name_hint"
+                        android:importantForAutofill="no"
                         android:inputType="text"
                         android:paddingHorizontal="14dp"
                         android:textColor="@android:color/black"
@@ -113,11 +114,11 @@
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
-                            android:text="每节时长一致"
+                            android:text="@string/timetable_same_duration"
                             android:textColor="@android:color/black"
                             android:textSize="15sp" />
 
-                        <Switch
+                        <androidx.appcompat.widget.SwitchCompat
                             android:id="@+id/switch_same_duration"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
@@ -138,7 +139,7 @@
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
-                            android:text="统一时长（分钟）"
+                            android:text="@string/timetable_duration_label"
                             android:textColor="@android:color/black"
                             android:textSize="14sp" />
 
@@ -148,7 +149,8 @@
                             android:layout_height="40dp"
                             android:background="@android:color/transparent"
                             android:gravity="center"
-                            android:hint="45"
+                            android:hint="@string/timetable_duration_hint"
+                            android:importantForAutofill="no"
                             android:inputType="number"
                             android:textColor="@android:color/black"
                             android:textColorHint="#94A0AF" />
@@ -160,7 +162,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="4dp"
-                android:text="课程节次"
+                android:text="@string/timetable_periods_title"
                 android:textColor="#526173"
                 android:textSize="13sp"
                 android:textStyle="bold" />
@@ -169,7 +171,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="12dp"
-                android:text="使用 24 小时制，结束时间会根据设置自动推导或手动调整。"
+                android:text="@string/timetable_periods_hint"
                 android:textColor="#8894A3"
                 android:textSize="12sp" />
 
@@ -177,35 +179,45 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="6dp"
-                android:orientation="horizontal">
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:weightSum="4">
 
                 <TextView
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="节次"
+                    android:gravity="center"
+                    android:text="@string/timetable_column_number"
                     android:textColor="#6F7C8E"
                     android:textSize="12sp" />
 
                 <TextView
-                    android:layout_width="96dp"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
+                    android:layout_weight="1"
                     android:gravity="center"
-                    android:text="开始"
+                    android:text="@string/timetable_column_start"
                     android:textColor="#6F7C8E"
                     android:textSize="12sp" />
 
                 <TextView
-                    android:layout_width="96dp"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
+                    android:layout_weight="1"
                     android:gravity="center"
-                    android:text="结束"
+                    android:text="@string/timetable_column_end"
                     android:textColor="#6F7C8E"
                     android:textSize="12sp" />
 
-                <View
-                    android:layout_width="40dp"
-                    android:layout_height="1dp" />
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text="@string/timetable_column_action"
+                    android:textColor="#6F7C8E"
+                    android:textSize="12sp" />
             </LinearLayout>
 
             <LinearLayout
@@ -220,7 +232,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="52dp"
                 android:layout_marginTop="8dp"
-                android:text="添加一节课"
+                android:text="@string/timetable_add_period"
                 android:textAllCaps="false"
                 android:textSize="15sp"
                 app:cornerRadius="18dp" />

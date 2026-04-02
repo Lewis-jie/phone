@@ -3,7 +3,6 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#F4F7FB"
     android:orientation="vertical">
 
     <LinearLayout
@@ -21,7 +20,7 @@
             android:clickable="true"
             android:focusable="true"
             android:gravity="center"
-            android:text="←"
+            android:text="@string/common_back_arrow"
             android:textColor="@android:color/black"
             android:textSize="20sp" />
 
@@ -29,7 +28,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="课表设置"
+            android:text="@string/course_settings_title"
             android:textColor="@android:color/black"
             android:textSize="20sp"
             android:textStyle="bold" />
@@ -42,7 +41,7 @@
             android:clickable="true"
             android:focusable="true"
             android:paddingHorizontal="8dp"
-            android:text="保存"
+            android:text="@string/common_save"
             android:textColor="?attr/colorPrimary"
             android:textSize="15sp"
             android:textStyle="bold" />
@@ -80,7 +79,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="当前课表"
+                        android:text="@string/course_settings_current_schedule"
                         android:textColor="#6F7C8E"
                         android:textSize="12sp" />
 
@@ -96,7 +95,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="48dp"
                         android:layout_marginTop="14dp"
-                        android:text="课程总览"
+                        android:text="@string/course_settings_overview"
                         android:textAllCaps="false"
                         app:cornerRadius="16dp" />
                 </LinearLayout>
@@ -119,7 +118,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="时间表"
+                        android:text="@string/course_settings_timetable"
                         android:textColor="#6F7C8E"
                         android:textSize="12sp" />
 
@@ -142,7 +141,7 @@
                             android:layout_height="48dp"
                             android:layout_marginEnd="8dp"
                             android:layout_weight="1"
-                            android:text="新建时间表"
+                            android:text="@string/course_settings_new_timetable"
                             android:textAllCaps="false"
                             app:cornerRadius="16dp" />
 
@@ -152,7 +151,7 @@
                             android:layout_width="0dp"
                             android:layout_height="48dp"
                             android:layout_weight="1"
-                            android:text="编辑时间表"
+                            android:text="@string/course_settings_edit_timetable"
                             android:textAllCaps="false"
                             app:cornerRadius="16dp" />
                     </LinearLayout>
@@ -176,7 +175,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="学期设置"
+                        android:text="@string/course_settings_semester"
                         android:textColor="#6F7C8E"
                         android:textSize="12sp" />
 
@@ -184,7 +183,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="14dp"
-                        android:text="开学第一周周一"
+                        android:text="@string/course_settings_semester_start"
                         android:textColor="#526173"
                         android:textSize="13sp"
                         android:textStyle="bold" />
@@ -199,7 +198,7 @@
                         android:focusable="true"
                         android:gravity="center_vertical"
                         android:paddingHorizontal="14dp"
-                        android:text="请选择"
+                        android:text="@string/common_choose"
                         android:textColor="@android:color/black"
                         android:textSize="15sp" />
 
@@ -207,7 +206,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="16dp"
-                        android:text="学期总周数"
+                        android:text="@string/course_settings_total_weeks"
                         android:textColor="#526173"
                         android:textSize="13sp"
                         android:textStyle="bold" />
@@ -229,7 +228,7 @@
                             android:clickable="true"
                             android:focusable="true"
                             android:gravity="center"
-                            android:text="−"
+                            android:text="@string/common_minus"
                             android:textSize="22sp" />
 
                         <TextView
@@ -238,7 +237,7 @@
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
                             android:gravity="center"
-                            android:text="20"
+                            android:text="@string/course_settings_default_weeks"
                             android:textColor="@android:color/black"
                             android:textSize="19sp"
                             android:textStyle="bold" />
@@ -251,7 +250,7 @@
                             android:clickable="true"
                             android:focusable="true"
                             android:gravity="center"
-                            android:text="+"
+                            android:text="@string/common_plus"
                             android:textSize="22sp" />
                     </LinearLayout>
                 </LinearLayout>
@@ -275,7 +274,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="危险操作"
+                        android:text="@string/course_settings_danger_zone"
                         android:textColor="#A54B4B"
                         android:textSize="12sp" />
 
@@ -285,7 +284,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="48dp"
                         android:layout_marginTop="10dp"
-                        android:text="删除当前课表"
+                        android:text="@string/course_settings_delete_schedule"
                         android:textAllCaps="false"
                         android:textColor="#C43D3D" />
                 </LinearLayout>

@@ -1,3 +1,130 @@
-<resources>
+﻿<resources>
     <string name="app_name">TimeTable</string>
+    <string name="common_save">保存</string>
+    <string name="common_saved">已保存</string>
+    <string name="common_cancel">取消</string>
+    <string name="common_confirm">确认</string>
+    <string name="common_delete">删除</string>
+    <string name="common_restore">恢复</string>
+    <string name="common_back">返回</string>
+    <string name="common_back_arrow">←</string>
+    <string name="common_prev_chevron">‹</string>
+    <string name="common_next_chevron">›</string>
+    <string name="common_chevron_right">›</string>
+    <string name="common_plus">+</string>
+    <string name="common_minus">−</string>
+    <string name="common_overflow">⋮</string>
+    <string name="common_choose">请选择</string>
+    <string name="common_zero">0</string>
+    <string name="common_zero_percent">0%%</string>
+    <string name="common_edit">编辑</string>
+
+    <string name="percent_value">%1$d%%</string>
+    <string name="format_range">%1$s ~ %2$s</string>
+    <string name="format_day_date">%1$s\n%2$s</string>
+    <string name="format_label_value">%1$s：%2$s</string>
+    <string name="format_plus_more">+%1$d</string>
+    <string name="format_period_number">第%1$d节</string>
+
+    <string name="nav_tab_tasks">待办</string>
+    <string name="nav_tab_schedule">日程</string>
+    <string name="nav_tab_settings">设置</string>
+
+    <string name="weekday_mon_short">一</string>
+    <string name="weekday_tue_short">二</string>
+    <string name="weekday_wed_short">三</string>
+    <string name="weekday_thu_short">四</string>
+    <string name="weekday_fri_short">五</string>
+    <string name="weekday_sat_short">六</string>
+    <string name="weekday_sun_short">日</string>
+
+    <string name="category_completion_title">完成情况</string>
+    <string name="category_completed_today">今日完成</string>
+    <string name="category_week_completion_rate">本周完成率</string>
+    <string name="category_total_tasks">总任务数</string>
+    <string name="category_week_completion_chart">本周完成情况</string>
+    <string name="category_schedule_import_title">课表导入</string>
+    <string name="category_import_schedule">导入课表</string>
+    <string name="category_theme_title">主题颜色</string>
+    <string name="category_custom_color">自定义颜色</string>
+    <string name="category_data_title">数据管理</string>
+    <string name="category_backup_manage">数据备份与导入</string>
+    <string name="category_export_backup">导出备份</string>
+    <string name="category_import_backup">导入备份</string>
+
+    <string name="task_fab_add">添加待办</string>
+    <string name="task_history">历史</string>
+    <string name="task_toggle_star">切换星标</string>
+
+    <string name="time_picker_title">选择时间</string>
+    <string name="time_picker_toggle_mode">切换时间输入方式</string>
+    <string name="time_picker_hour_hint">小时</string>
+    <string name="time_picker_minute_hint">分钟</string>
+    <string name="time_picker_select_start">选择开始时间</string>
+    <string name="time_picker_select_end">选择结束时间</string>
+    <string name="time_zero">00</string>
+    <string name="time_separator">:</string>
+
+    <string name="add_task_title_new">新建待办</string>
+    <string name="add_task_title_hint">待办标题 *</string>
+    <string name="add_task_tags_hint">标签</string>
+    <string name="add_task_due_date_hint">点击选择到期日期</string>
+    <string name="add_task_reminder_none">提醒：不提醒</string>
+    <string name="add_task_description_hint">描述</string>
+    <string name="add_task_default_start">08:00</string>
+    <string name="add_task_default_end">09:00</string>
+
+    <string name="history_title">历史待办</string>
+    <string name="history_empty">还没有历史待办</string>
+    <string name="history_clear_month">清空当月</string>
+    <string name="history_clear_all">清空全部</string>
+
+    <string name="timetable_editor_title">编辑时间表</string>
+    <string name="timetable_name_label">时间表名称</string>
+    <string name="timetable_name_hint">输入名称</string>
+    <string name="timetable_same_duration">每节时长一致</string>
+    <string name="timetable_duration_label">统一时长（分钟）</string>
+    <string name="timetable_duration_hint">45</string>
+    <string name="timetable_periods_title">课程节次</string>
+    <string name="timetable_periods_hint">使用 24 小时制，结束时间会根据设置自动推导或手动调整。</string>
+    <string name="timetable_column_number">节次</string>
+    <string name="timetable_column_start">开始</string>
+    <string name="timetable_column_end">结束</string>
+    <string name="timetable_column_action">操作</string>
+    <string name="timetable_add_period">添加一节课</string>
+    <string name="timetable_delete_row">删除</string>
+
+    <string name="course_title">课表</string>
+    <string name="course_edit_title">编辑课程</string>
+    <string name="course_overview_title">课程总览</string>
+    <string name="course_overview_empty">当前课表还没有课程</string>
+    <string name="course_import_school_title">选择学校</string>
+    <string name="course_empty_import">暂无课表，点击右上角 + 导入</string>
+    <string name="course_info_time">上课时间</string>
+    <string name="course_info_teacher">任课教师</string>
+    <string name="course_info_classroom">上课教室</string>
+    <string name="course_info_class_name">班级</string>
+    <string name="course_name_label">课程名称</string>
+    <string name="course_name_hint">输入课程名称</string>
+    <string name="course_color_label">课程颜色</string>
+    <string name="course_slots_title">上课时段</string>
+    <string name="course_add_slot">添加上课时段</string>
+    <string name="course_settings_title">课表设置</string>
+    <string name="course_settings_current_schedule">当前课表</string>
+    <string name="course_settings_overview">课程总览</string>
+    <string name="course_settings_timetable">时间表</string>
+    <string name="course_settings_new_timetable">新建时间表</string>
+    <string name="course_settings_edit_timetable">编辑时间表</string>
+    <string name="course_settings_semester">学期设置</string>
+    <string name="course_settings_semester_start">开学第一周周一</string>
+    <string name="course_settings_total_weeks">学期总周数</string>
+    <string name="course_settings_default_weeks">20</string>
+    <string name="course_settings_danger_zone">危险操作</string>
+    <string name="course_settings_delete_schedule">删除当前课表</string>
+    <string name="schedule_tab_day">日</string>
+    <string name="schedule_tab_week">周</string>
+    <string name="schedule_tab_month">月</string>
+    <string name="schedule_day_empty">当天暂无安排</string>
+    <string name="schedule_week_loading">正在加载本周日程…</string>
+    <string name="schedule_week_empty">本周暂无课程和待办</string>
 </resources>

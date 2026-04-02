@@ -20,7 +20,9 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
+import androidx.core.graphics.toColorInt
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 class CourseLessonEditFragment : Fragment() {
 
@@ -141,7 +143,7 @@ class CourseLessonEditFragment : Fragment() {
                 shape = GradientDrawable.RECTANGLE
                 cornerRadius = 18 * density
                 setColor(Color.WHITE)
-                setStroke((1 * density).toInt(), Color.parseColor("#E3E8EF"))
+                setStroke((1 * density).toInt(), "#E3E8EF".toColorInt())
             }
             elevation = 2 * density
             layoutParams = LinearLayout.LayoutParams(
@@ -153,7 +155,7 @@ class CourseLessonEditFragment : Fragment() {
         card.addView(TextView(requireContext()).apply {
             text = "上课时间"
             textSize = 12f
-            setTextColor(Color.parseColor("#6F7C8E"))
+            setTextColor("#6F7C8E".toColorInt())
         })
 
         val row1 = LinearLayout(requireContext()).apply {
@@ -167,11 +169,11 @@ class CourseLessonEditFragment : Fragment() {
         val tvTimeSummary = TextView(requireContext()).apply {
             text = formatTimeSummary(data)
             textSize = 15f
-            setTextColor(Color.parseColor("#243447"))
+            setTextColor("#243447".toColorInt())
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
                 cornerRadius = 14 * density
-                setColor(Color.parseColor("#F7F9FC"))
+                setColor("#F7F9FC".toColorInt())
             }
             gravity = Gravity.CENTER_VERTICAL
             minHeight = (48 * density).toInt()
@@ -182,7 +184,7 @@ class CourseLessonEditFragment : Fragment() {
         val btnDelete = TextView(requireContext()).apply {
             text = "删除"
             textSize = 13f
-            setTextColor(Color.parseColor("#9AA5B5"))
+            setTextColor("#9AA5B5".toColorInt())
             gravity = Gravity.CENTER
             setPadding((12 * density).toInt(), 0, 0, 0)
             setOnClickListener {
@@ -236,7 +238,7 @@ class CourseLessonEditFragment : Fragment() {
         dialogView.addView(TextView(requireContext()).apply {
             text = "滑动选择上课时段"
             textSize = 13f
-            setTextColor(Color.parseColor("#6F7C8E"))
+            setTextColor("#6F7C8E".toColorInt())
             setPadding((8 * density).toInt(), 0, (8 * density).toInt(), (12 * density).toInt())
         })
         val pickerRow = LinearLayout(requireContext()).apply {
@@ -296,7 +298,7 @@ class CourseLessonEditFragment : Fragment() {
                 text = title
                 textSize = 12f
                 gravity = Gravity.CENTER
-                setTextColor(Color.parseColor("#6F7C8E"))
+                setTextColor("#6F7C8E".toColorInt())
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
@@ -318,7 +320,7 @@ class CourseLessonEditFragment : Fragment() {
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
                 cornerRadius = 12 * density
-                setColor(Color.parseColor("#F7F9FC"))
+                setColor("#F7F9FC".toColorInt())
             }
             setPadding((12 * density).toInt(), (10 * density).toInt(), (12 * density).toInt(), (10 * density).toInt())
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
@@ -391,7 +393,7 @@ class CourseLessonEditFragment : Fragment() {
         container.addView(TextView(requireContext()).apply {
             text = "上课周次"
             textSize = 12f
-            setTextColor(Color.parseColor("#6F7C8E"))
+            setTextColor("#6F7C8E".toColorInt())
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
@@ -410,10 +412,10 @@ class CourseLessonEditFragment : Fragment() {
         fun refreshChips() {
             weekChips.forEachIndexed { idx, chip ->
                 val active = CourseLesson.isWeekActive(data.weekBitmap, idx + 1)
-                chip.setTextColor(if (active) Color.WHITE else Color.parseColor("#78879A"))
+                chip.setTextColor(if (active) Color.WHITE else "#78879A".toColorInt())
                 chip.background = GradientDrawable().apply {
                     shape = GradientDrawable.OVAL
-                    setColor(if (active) primaryColor else Color.parseColor("#EEF2F6"))
+                    setColor(if (active) primaryColor else "#EEF2F6".toColorInt())
                 }
             }
         }
@@ -429,11 +431,11 @@ class CourseLessonEditFragment : Fragment() {
             text = label
             textSize = 11f
             gravity = Gravity.CENTER
-            setTextColor(Color.parseColor("#4C5B6B"))
+            setTextColor("#4C5B6B".toColorInt())
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
                 cornerRadius = 10 * density
-                setColor(Color.parseColor("#EEF2F6"))
+                setColor("#EEF2F6".toColorInt())
             }
             setPadding((12 * density).toInt(), (6 * density).toInt(), (12 * density).toInt(), (6 * density).toInt())
             layoutParams = LinearLayout.LayoutParams(
@@ -472,7 +474,7 @@ class CourseLessonEditFragment : Fragment() {
                 val weekNum = rowIndex * perRow + columnIndex + 1
                 if (weekNum > totalWeeks) break
                 val chip = TextView(requireContext()).apply {
-                    text = weekNum.toString()
+                    text = String.format(Locale.getDefault(), "%d", weekNum)
                     textSize = 10f
                     gravity = Gravity.CENTER
                     typeface = Typeface.DEFAULT

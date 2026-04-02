@@ -59,6 +59,7 @@
             android:id="@+id/btn_star"
             android:layout_width="24dp"
             android:layout_height="24dp"
+            android:contentDescription="@string/task_toggle_star"
             android:src="@drawable/ic_star_empty"
             android:clickable="true"
             android:focusable="true"

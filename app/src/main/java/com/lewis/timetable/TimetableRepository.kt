@@ -4,7 +4,9 @@ import androidx.lifecycle.LiveData
 
 class TimetableRepository(private val dao: TimetableDao) {
 
-    val allTimetables: LiveData<List<Timetable>> = dao.getAllTimetables()
+    val allTimetables: LiveData<List<Timetable>> by lazy(LazyThreadSafetyMode.NONE) {
+        dao.getAllTimetables()
+    }
 
     suspend fun getTimetableById(id: Int) = dao.getTimetableById(id)
 

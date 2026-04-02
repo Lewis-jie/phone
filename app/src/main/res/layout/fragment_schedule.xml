@@ -3,7 +3,6 @@
     xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="?attr/colorSurface"
     android:orientation="vertical">
 
     <LinearLayout
@@ -23,7 +22,7 @@
             android:clickable="true"
             android:focusable="true"
             android:gravity="center"
-            android:text="日"
+            android:text="@string/schedule_tab_day"
             android:textSize="14sp" />
 
         <TextView
@@ -36,7 +35,7 @@
             android:clickable="true"
             android:focusable="true"
             android:gravity="center"
-            android:text="周"
+            android:text="@string/schedule_tab_week"
             android:textSize="14sp" />
 
         <TextView
@@ -49,11 +48,11 @@
             android:clickable="true"
             android:focusable="true"
             android:gravity="center"
-            android:text="月"
+            android:text="@string/schedule_tab_month"
             android:textSize="14sp" />
     </LinearLayout>
 
-    <FrameLayout
+    <com.lewis.timetable.AccessibleTouchFrameLayout
         android:id="@+id/schedule_content"
         android:layout_width="match_parent"
         android:layout_height="0dp"

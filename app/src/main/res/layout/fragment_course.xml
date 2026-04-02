@@ -3,7 +3,6 @@
     xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="?attr/colorSurface"
     android:orientation="vertical">
 
     <LinearLayout
@@ -19,7 +18,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:gravity="center"
-            android:text="课表"
+            android:text="@string/course_title"
             android:textColor="@android:color/black"
             android:textSize="18sp"
             android:textStyle="bold" />
@@ -32,7 +31,7 @@
             android:clickable="true"
             android:focusable="true"
             android:gravity="center"
-            android:text="+"
+            android:text="@string/common_plus"
             android:textColor="@android:color/black"
             android:textSize="24sp" />
 
@@ -44,7 +43,7 @@
             android:clickable="true"
             android:focusable="true"
             android:gravity="center"
-            android:text="⋮"
+            android:text="@string/common_overflow"
             android:textColor="@android:color/black"
             android:textSize="20sp" />
     </LinearLayout>
@@ -71,7 +70,7 @@
             android:clickable="true"
             android:focusable="true"
             android:gravity="center"
-            android:text="‹"
+            android:text="@string/common_prev_chevron"
             android:textSize="24sp" />
 
         <TextView
@@ -91,7 +90,7 @@
             android:clickable="true"
             android:focusable="true"
             android:gravity="center"
-            android:text="›"
+            android:text="@string/common_next_chevron"
             android:textSize="24sp" />
     </LinearLayout>
 

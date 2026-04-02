@@ -12,21 +12,24 @@ import kotlinx.coroutines.launch
 class TaskViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository: TaskRepository
-    val allTasks: LiveData<List<Task>>
-    val allUsedTags: LiveData<List<Tag>>
-    val starredTasks: LiveData<List<Task>>
-    val recentTags: LiveData<List<Tag>>
-    val allTaskTagSummaries: LiveData<List<TaskTagSummary>>
+    val allTasks: LiveData<List<Task>> by lazy(LazyThreadSafetyMode.NONE) { repository.allTasks }
+    val allUsedTags: LiveData<List<Tag>> by lazy(LazyThreadSafetyMode.NONE) { repository.allUsedTags }
+    val starredTasks: LiveData<List<Task>> by lazy(LazyThreadSafetyMode.NONE) { repository.starredTasks }
+    val recentTags: LiveData<List<Tag>> by lazy(LazyThreadSafetyMode.NONE) { repository.getRecentTags() }
+    val allTaskTagSummaries: LiveData<List<TaskTagSummary>> by lazy(LazyThreadSafetyMode.NONE) {
+        repository.allTaskTagSummaries
+    }
+    val allTaskTagColorSummaries: LiveData<List<TaskTagColorSummary>> by lazy(LazyThreadSafetyMode.NONE) {
+        repository.allTaskTagColorSummaries
+    }
+    private val rootRepeatTasksLiveData: LiveData<List<Task>> by lazy(LazyThreadSafetyMode.NONE) {
+        repository.getRootRepeatTasks()
+    }
     private var tagColorsEnsured = false
 
     init {
         val db = AppDatabase.getDatabase(application)
         repository = TaskRepository(db.taskDao(), db.tagDao())
-        allTasks = repository.allTasks
-        allUsedTags = repository.allUsedTags
-        starredTasks = repository.starredTasks
-        recentTags = repository.getRecentTags()
-        allTaskTagSummaries = repository.allTaskTagSummaries
     }
 
     fun ensureTagColorsIfNeeded() {
@@ -42,11 +45,13 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         _filterTag.value = tag
     }
 
-    val filteredTasks: LiveData<List<Task>> = _filterTag.switchMap { tag ->
-        when (tag) {
-            null -> allTasks
-            "★" -> starredTasks
-            else -> repository.getTasksByTag(tag)
+    val filteredTasks: LiveData<List<Task>> by lazy(LazyThreadSafetyMode.NONE) {
+        _filterTag.switchMap { tag ->
+            when (tag) {
+                null -> allTasks
+                "★" -> starredTasks
+                else -> repository.getTasksByTag(tag)
+            }
         }
     }
 
@@ -83,7 +88,7 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
 
     suspend fun getTagsForTask(taskId: Int): List<Tag> = repository.getTagsForTask(taskId)
 
-    fun getRootRepeatTasks() = repository.getRootRepeatTasks()
+    fun getRootRepeatTasks() = rootRepeatTasksLiveData
 
     suspend fun buildTagColorMap(tasks: List<Task>): Map<Int, Int> =
         tasks.associateWith { task ->
@@ -95,14 +100,15 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         repository.update(task.copy(isCompleted = true))
 
         val nextStartMs = RepeatTaskHelper.getNextStartTime(task) ?: return@launch
-        val duration = (task.endTime ?: (task.startTime!! + 3600000L)) - task.startTime!!
+        val currentStartMs = task.startTime ?: return@launch
+        val duration = (task.endTime ?: (currentStartMs + 3600000L)) - currentStartMs
         val rootId = RepeatTaskHelper.getRootId(task)
 
         val nextTask = task.copy(
             id = 0,
             startTime = nextStartMs,
             endTime = nextStartMs + duration,
-            reminderTime = task.reminderTime?.let { nextStartMs - (task.startTime!! - it) },
+            reminderTime = task.reminderTime?.let { nextStartMs - (currentStartMs - it) },
             isCompleted = false,
             parentTaskId = rootId,
             createdAt = System.currentTimeMillis()
@@ -112,7 +118,60 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun deleteThisInstance(task: Task) = viewModelScope.launch {
-        repository.delete(task)
+        if (task.repeatType == "none") {
+            repository.delete(task)
+            return@launch
+        }
+
+        if (task.parentTaskId != 0) {
+            repository.delete(task)
+            return@launch
+        }
+
+        val futureInstance = repository.getAllInstancesOfRepeat(task.id)
+            .asSequence()
+            .filter { it.id != task.id }
+            .filter { !it.isCompleted }
+            .sortedBy { it.startTime ?: Long.MAX_VALUE }
+            .firstOrNull()
+
+        if (futureInstance != null) {
+            repository.update(
+                task.copy(
+                    title = futureInstance.title,
+                    description = futureInstance.description,
+                    startTime = futureInstance.startTime,
+                    endTime = futureInstance.endTime,
+                    dueDate = futureInstance.dueDate,
+                    reminderTime = futureInstance.reminderTime,
+                    repeatType = futureInstance.repeatType,
+                    repeatDays = futureInstance.repeatDays,
+                    isCompleted = futureInstance.isCompleted,
+                    isStarred = futureInstance.isStarred,
+                    sortOrder = futureInstance.sortOrder,
+                    createdAt = futureInstance.createdAt
+                )
+            )
+            repository.delete(futureInstance)
+            return@launch
+        }
+
+        val nextStartMs = RepeatTaskHelper.getNextStartTime(task)
+        if (nextStartMs == null) {
+            repository.delete(task)
+            return@launch
+        }
+
+        val startMs = task.startTime ?: nextStartMs
+        val duration = (task.endTime ?: (startMs + 3600000L)) - startMs
+        repository.update(
+            task.copy(
+                startTime = nextStartMs,
+                endTime = nextStartMs + duration,
+                reminderTime = task.reminderTime?.let { nextStartMs - (startMs - it) },
+                isCompleted = false
+            )
+        )
     }
 
     fun deleteAllRepeatInstances(task: Task) = viewModelScope.launch {

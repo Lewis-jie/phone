@@ -20,7 +20,7 @@
             android:clickable="true"
             android:focusable="true"
             android:gravity="center"
-            android:text="‹"
+                android:text="@string/common_prev_chevron"
             android:textSize="24sp" />
 
         <TextView
@@ -40,7 +40,7 @@
             android:clickable="true"
             android:focusable="true"
             android:gravity="center"
-            android:text="›"
+                android:text="@string/common_next_chevron"
             android:textSize="24sp" />
     </LinearLayout>
 

@@ -1,7 +1,6 @@
-package com.lewis.timetable
+﻿package com.lewis.timetable
 
 import android.app.DatePickerDialog
-import android.app.TimePickerDialog
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
@@ -49,13 +48,43 @@ class AddTaskFragment : Fragment() {
         return android.graphics.Color.rgb(r, g, b)
     }
 
+    private fun normalizedTagNames(raw: String): List<String> {
+        return raw.split(",")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .distinct()
+    }
+
+    private fun buildStartCalendar(referenceTime: Long?): Calendar {
+        val baseTime = referenceTime ?: System.currentTimeMillis()
+        return Calendar.getInstance().apply {
+            timeInMillis = baseTime
+            set(Calendar.HOUR_OF_DAY, startHour)
+            set(Calendar.MINUTE, startMinute)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+    }
+
+    private fun buildEndCalendar(referenceTime: Long?, startCal: Calendar): Calendar {
+        val baseTime = referenceTime ?: startCal.timeInMillis
+        return Calendar.getInstance().apply {
+            timeInMillis = baseTime
+            set(Calendar.HOUR_OF_DAY, endHour)
+            set(Calendar.MINUTE, endMinute)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+            if (before(startCal)) add(Calendar.DAY_OF_MONTH, 1)
+        }
+    }
+
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         viewModel.ensureTagColorsIfNeeded()
 
-        // 主题色（仅用于背景/按钮，不再用于标题/返回箭头）
+        // 涓婚鑹诧紙浠呯敤浜庤儗鏅?鎸夐挳锛屼笉鍐嶇敤浜庢爣棰?杩斿洖绠ご锛?
         val primaryColor = ThemeHelper.getPrimaryColor(requireContext())
-        // primaryContainer 取主题色的浅色版（透明度20%叠白底）
+        // primaryContainer 鍙栦富棰樿壊鐨勬祬鑹茬増锛堥€忔槑搴?0%鍙犵櫧搴曪級
         val primaryContainer = blendWithWhite(primaryColor, 0.18f)
 
         val tvFormTitle  = view.findViewById<TextView>(R.id.tv_form_title)
@@ -73,17 +102,17 @@ class AddTaskFragment : Fragment() {
         val btnSave      = view.findViewById<Button>(R.id.btn_save)
         val btnDelete    = view.findViewById<Button>(R.id.btn_delete)
 
-        // 问题4：标题固定黑色，不跟随主题色
+        // 闂4锛氭爣棰樺浐瀹氶粦鑹诧紝涓嶈窡闅忎富棰樿壊
         tvFormTitle.setTextColor(Color.BLACK)
         tvFormTitle.typeface = Typeface.DEFAULT_BOLD
 
-        // 问题11：返回箭头固定黑色，字体固定不被系统字体改变
+        // 闂11锛氳繑鍥炵澶村浐瀹氶粦鑹诧紝瀛椾綋鍥哄畾涓嶈绯荤粺瀛椾綋鏀瑰彉
         btnBack.setTextColor(Color.BLACK)
         btnBack.typeface = Typeface.DEFAULT
         val arrowSizePx = (22f * resources.displayMetrics.density).toInt().toFloat()
         btnBack.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, arrowSizePx)
 
-        // 保存按钮背景色跟随主题
+        // 淇濆瓨鎸夐挳鑳屾櫙鑹茶窡闅忎富棰?
         btnSave.backgroundTintList = android.content.res.ColorStateList.valueOf(primaryColor)
 
         val bgDrawable = {
@@ -104,8 +133,8 @@ class AddTaskFragment : Fragment() {
         tvReminderTime.background = bgDrawable()
         spinnerRepeat.background = bgDrawable()
 
-        // 问题4（回车键）：将 etCategory 设为单行并把回车键设为"完成"，
-        // 按下回车后收起键盘，等同于确认当前输入的标签
+        // 闂4锛堝洖杞﹂敭锛夛細灏?etCategory 璁句负鍗曡骞舵妸鍥炶溅閿涓?瀹屾垚"锛?
+        // 鎸変笅鍥炶溅鍚庢敹璧烽敭鐩橈紝绛夊悓浜庣‘璁ゅ綋鍓嶈緭鍏ョ殑鏍囩
         etCategory.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_WORDS
         etCategory.imeOptions = EditorInfo.IME_ACTION_DONE
         etCategory.maxLines = 1
@@ -118,7 +147,7 @@ class AddTaskFragment : Fragment() {
             } else false
         }
 
-        // 最近使用标签
+        // 鏈€杩戜娇鐢ㄦ爣绛?
         viewModel.recentTags.observe(viewLifecycleOwner) { tags ->
             chipGroupRecent.removeAllViews()
             tags.forEach { tag ->
@@ -128,7 +157,7 @@ class AddTaskFragment : Fragment() {
                     chipBackgroundColor = android.content.res.ColorStateList.valueOf(primaryColor)
                     setTextColor(Color.WHITE)
                     setOnClickListener {
-                        // 问题13 对应的单标签逻辑：点击最近标签直接替换输入框内容
+                        // 闂13 瀵瑰簲鐨勫崟鏍囩閫昏緫锛氱偣鍑绘渶杩戞爣绛剧洿鎺ユ浛鎹㈣緭鍏ユ鍐呭
                         etCategory.setText(tag.name)
                     }
                 }
@@ -136,7 +165,7 @@ class AddTaskFragment : Fragment() {
             }
         }
 
-        // 重复选项
+        // 閲嶅閫夐」
         val repeatOptions = listOf("不重复", "每天", "每周", "每月", "每年", "每工作日", "自定义")
         val repeatKeys    = listOf("none", "daily", "weekly", "monthly", "yearly", "weekday", "custom")
         spinnerRepeat.adapter = ArrayAdapter(
@@ -152,15 +181,15 @@ class AddTaskFragment : Fragment() {
             override fun onNothingSelected(parent: AdapterView<*>) {}
         }
 
-        // 自定义周几
+        // 鑷畾涔夊懆鍑?
         val density = resources.displayMetrics.density
         val weekdays = listOf("一", "二", "三", "四", "五", "六", "日")
-        val selectedDays = mutableSetOf(0, 1, 2, 3, 4, 5, 6)
+        val selectedDays = mutableSetOf<Int>()
         weekdays.forEachIndexed { index, day ->
             val chip = Chip(requireContext()).apply {
                 text = day
                 isCheckable = true
-                isChecked = true
+                isChecked = false
                 chipStartPadding = 0f
                 chipEndPadding = 0f
                 textStartPadding = 4f * density
@@ -180,37 +209,85 @@ class AddTaskFragment : Fragment() {
             chipGroupWeekdays.addView(chip, params)
         }
 
-        // 开始时间
+        fun applySelectedWeekdays(days: Set<Int>) {
+            val resolvedDays = days.filter { it in 0..6 }.toSet()
+            selectedDays.clear()
+            selectedDays.addAll(resolvedDays)
+            for (i in 0 until chipGroupWeekdays.childCount) {
+                (chipGroupWeekdays.getChildAt(i) as? Chip)?.isChecked = i in resolvedDays
+            }
+        }
+
+        fun formatReminderLabel(offsetMinutes: Int?): String {
+            return when (offsetMinutes) {
+                null -> "提醒：不提醒"
+                5 -> "提醒：提前5分钟"
+                15 -> "提醒：提前15分钟"
+                30 -> "提醒：提前30分钟"
+                60 -> "提醒：提前1小时"
+                120 -> "提醒：提前2小时"
+                180 -> "提醒：提前3小时"
+                else -> {
+                    val reminderTotalMinutes = startHour * 60 + startMinute - offsetMinutes
+                    if (reminderTotalMinutes in 0 until 24 * 60) {
+                        "提醒：${
+                            String.format(
+                                Locale.getDefault(),
+                                "%02d:%02d",
+                                reminderTotalMinutes / 60,
+                                reminderTotalMinutes % 60
+                            )
+                        }"
+                    } else {
+                        "提醒：不提醒"
+                    }
+                }
+            }
+        }
+
+        // 寮€濮嬫椂闂?
         tvStartTime.setOnClickListener {
-            TimePickerBottomDialog(requireContext(), startHour, startMinute) { h, m ->
+            TimePickerBottomDialog(
+                requireContext(),
+                startHour,
+                startMinute,
+                "选择开始时间"
+            ) { h, m ->
                 startHour = h; startMinute = m
-                tvStartTime.text = String.format("%02d:%02d", h, m)
+                tvStartTime.text = String.format(Locale.getDefault(), "%02d:%02d", h, m)
                 endHour = (h + 1) % 24; endMinute = m
-                tvEndTime.text = String.format("%02d:%02d", endHour, endMinute)
+                tvEndTime.text = String.format(Locale.getDefault(), "%02d:%02d", endHour, endMinute)
+                tvReminderTime.text = formatReminderLabel(reminderOffsetMinutes)
             }.show()
         }
 
         // 结束时间
         tvEndTime.setOnClickListener {
-            TimePickerBottomDialog(requireContext(), endHour, endMinute) { h, m ->
+            TimePickerBottomDialog(
+                requireContext(),
+                endHour,
+                endMinute,
+                "选择结束时间"
+            ) { h, m ->
                 endHour = h; endMinute = m
-                tvEndTime.text = String.format("%02d:%02d", h, m)
+                tvEndTime.text = String.format(Locale.getDefault(), "%02d:%02d", h, m)
             }.show()
         }
 
-        // 到期日期
+        // 鍒版湡鏃ユ湡
         tvDueDate.setOnClickListener {
             val cal = dueDateCalendar ?: Calendar.getInstance()
             DatePickerDialog(requireContext(), { _, year, month, day ->
                 dueDateCalendar = Calendar.getInstance().apply {
                     set(year, month, day, 23, 59, 59)
                 }
-                tvDueDate.text = SimpleDateFormat("yyyy年MM月dd日", Locale.getDefault())
-                    .format(dueDateCalendar!!.time)
+                val selectedDueDate = dueDateCalendar ?: return@DatePickerDialog
+                tvDueDate.text = SimpleDateFormat("yyyy年M月d日", Locale.getDefault())
+                    .format(selectedDueDate.time)
             }, cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH)).show()
         }
 
-        // 提醒
+        // 鎻愰啋
         tvReminderTime.setOnClickListener {
             val options = arrayOf("不提醒", "提前5分钟", "提前15分钟", "提前30分钟",
                 "提前1小时", "提前2小时", "提前3小时", "自定义")
@@ -221,35 +298,39 @@ class AddTaskFragment : Fragment() {
                     when {
                         offsets[which] == null -> {
                             reminderOffsetMinutes = null
-                            tvReminderTime.text = "提醒：不提醒"
+                            tvReminderTime.text = formatReminderLabel(reminderOffsetMinutes)
                         }
                         offsets[which] == -1 -> {
-                            val cal = Calendar.getInstance()
-                            TimePickerDialog(requireContext(), { _, hour, minute ->
-                                val now = Calendar.getInstance()
-                                val selected = Calendar.getInstance().apply {
-                                    set(Calendar.HOUR_OF_DAY, hour)
-                                    set(Calendar.MINUTE, minute)
-                                }
-                                val diffMinutes = ((selected.timeInMillis - now.timeInMillis) / 60000).toInt()
-                                if (diffMinutes > 0) {
-                                    reminderOffsetMinutes = -diffMinutes
-                                    tvReminderTime.text = "提醒：${String.format("%02d:%02d", hour, minute)}"
+                            val reminderTotalMinutes = reminderOffsetMinutes
+                                ?.let { startHour * 60 + startMinute - it }
+                                ?.takeIf { it in 0 until 24 * 60 }
+                            val initialHour = reminderTotalMinutes?.div(60) ?: startHour
+                            val initialMinute = reminderTotalMinutes?.rem(60) ?: startMinute
+                            TimePickerBottomDialog(
+                                requireContext(),
+                                initialHour,
+                                initialMinute,
+                                "选择提醒时间"
+                            ) { hour, minute ->
+                                val startTotalMinutes = startHour * 60 + startMinute
+                                val selectedTotalMinutes = hour * 60 + minute
+                                reminderOffsetMinutes = if (selectedTotalMinutes < startTotalMinutes) {
+                                    startTotalMinutes - selectedTotalMinutes
                                 } else {
-                                    reminderOffsetMinutes = null
-                                    tvReminderTime.text = "提醒：不提醒"
+                                    null
                                 }
-                            }, cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE), true).show()
+                                tvReminderTime.text = formatReminderLabel(reminderOffsetMinutes)
+                            }.show()
                         }
                         else -> {
                             reminderOffsetMinutes = offsets[which]
-                            tvReminderTime.text = "提醒：${options[which]}"
+                            tvReminderTime.text = formatReminderLabel(reminderOffsetMinutes)
                         }
                     }
                 }.show()
         }
 
-        // 编辑模式
+        // 缂栬緫妯″紡
         val taskId = arguments?.getInt("taskId", -1) ?: -1
         if (taskId != -1) {
             tvFormTitle.text = "编辑待办"
@@ -297,55 +378,96 @@ class AddTaskFragment : Fragment() {
                         val cal = Calendar.getInstance().apply { timeInMillis = ts }
                         startHour = cal.get(Calendar.HOUR_OF_DAY)
                         startMinute = cal.get(Calendar.MINUTE)
-                        tvStartTime.text = String.format("%02d:%02d", startHour, startMinute)
+                        tvStartTime.text = String.format(
+                            Locale.getDefault(),
+                            "%02d:%02d",
+                            startHour,
+                            startMinute
+                        )
                     }
                     task.endTime?.let { ts ->
                         val cal = Calendar.getInstance().apply { timeInMillis = ts }
                         endHour = cal.get(Calendar.HOUR_OF_DAY)
                         endMinute = cal.get(Calendar.MINUTE)
-                        tvEndTime.text = String.format("%02d:%02d", endHour, endMinute)
+                        tvEndTime.text = String.format(
+                            Locale.getDefault(),
+                            "%02d:%02d",
+                            endHour,
+                            endMinute
+                        )
                     }
                     task.dueDate?.let { ts ->
                         dueDateCalendar = Calendar.getInstance().apply { timeInMillis = ts }
-                        tvDueDate.text = SimpleDateFormat("yyyy年MM月dd日", Locale.getDefault())
-                            .format(dueDateCalendar!!.time)
+                        val selectedDueDate = dueDateCalendar ?: return@let
+                        tvDueDate.text = SimpleDateFormat("yyyy年M月d日", Locale.getDefault())
+                            .format(selectedDueDate.time)
                     }
                     task.reminderTime?.let { rt ->
                         val startMs = task.startTime ?: return@let
                         val offsetMin = ((startMs - rt) / 60000).toInt()
                         reminderOffsetMinutes = offsetMin
-                        tvReminderTime.text = when (offsetMin) {
-                            5    -> "提醒：提前5分钟"
-                            15   -> "提醒：提前15分钟"
-                            30   -> "提醒：提前30分钟"
-                            60   -> "提醒：提前1小时"
-                            120  -> "提醒：提前2小时"
-                            180  -> "提醒：提前3小时"
-                            else -> {
-                                val reminderCal = Calendar.getInstance().apply { timeInMillis = rt }
-                                "提醒：${String.format("%02d:%02d",
-                                    reminderCal.get(Calendar.HOUR_OF_DAY),
-                                    reminderCal.get(Calendar.MINUTE))}"
-                            }
-                        }
+                        tvReminderTime.text = formatReminderLabel(offsetMin)
                     }
                     val repeatIndex = repeatKeys.indexOf(task.repeatType).coerceAtLeast(0)
                     spinnerRepeat.setSelection(repeatIndex)
+                    applySelectedWeekdays(
+                        task.repeatDays
+                            .split(",")
+                            .mapNotNull { it.trim().toIntOrNull() }
+                            .filter { it in 0..6 }
+                            .toSet()
+                    )
                 }
             }
         }
 
-        // 返回按钮 —— 未保存提示
+        // 杩斿洖鎸夐挳 鈥斺€?鏈繚瀛樻彁绀?
         fun hasChanges(): Boolean {
-            if (existingTask == null) return false
-            return etTitle.text.toString().trim() != existingTask!!.title ||
-                    etDescription.text.toString().trim() != existingTask!!.description ||
-                    etCategory.text.toString().trim() != existingTags.joinToString(", ")
+            val currentTitle = etTitle.text.toString().trim()
+            val currentDescription = etDescription.text.toString().trim()
+            val currentTags = normalizedTagNames(etCategory.text.toString())
+            val currentRepeatKey = repeatKeys[spinnerRepeat.selectedItemPosition]
+            val currentRepeatDays = if (currentRepeatKey == "custom") {
+                selectedDays.sorted().joinToString(",")
+            } else {
+                ""
+            }
+
+            val existing = existingTask
+            if (existing == null) {
+                return currentTitle.isNotEmpty() ||
+                    currentDescription.isNotEmpty() ||
+                    currentTags.isNotEmpty() ||
+                    startHour != 8 ||
+                    startMinute != 0 ||
+                    endHour != 9 ||
+                    endMinute != 0 ||
+                    dueDateCalendar != null ||
+                    reminderOffsetMinutes != null ||
+                    currentRepeatKey != "none" ||
+                    currentRepeatDays.isNotEmpty()
+            }
+
+            val currentStartCal = buildStartCalendar(existing.startTime)
+            val currentEndCal = buildEndCalendar(existing.endTime ?: existing.startTime, currentStartCal)
+            val currentReminderTime = reminderOffsetMinutes
+                ?.takeIf { it > 0 }
+                ?.let { currentStartCal.timeInMillis - it * 60000L }
+
+            return currentTitle != existing.title ||
+                currentDescription != existing.description ||
+                currentTags != existingTags.distinct() ||
+                currentStartCal.timeInMillis != existing.startTime ||
+                currentEndCal.timeInMillis != existing.endTime ||
+                dueDateCalendar?.timeInMillis != existing.dueDate ||
+                currentReminderTime != existing.reminderTime ||
+                currentRepeatKey != existing.repeatType ||
+                currentRepeatDays != existing.repeatDays
         }
 
         btnBack.setOnClickListener {
             if (hasChanges()) {
-                // 问题5：使用 create() 然后手动设置按钮颜色
+                // 闂5锛氫娇鐢?create() 鐒跺悗鎵嬪姩璁剧疆鎸夐挳棰滆壊
                 val dialog = AlertDialog.Builder(requireContext())
                     .setTitle("提示")
                     .setMessage("有未保存的修改，是否保存？")
@@ -353,7 +475,7 @@ class AddTaskFragment : Fragment() {
                     .setNegativeButton("不保存") { _, _ -> findNavController().navigateUp() }
                     .create()
                 dialog.show()
-                // 保存 → 黑色；不保存 → 红色
+                // 淇濆瓨 鈫?榛戣壊锛涗笉淇濆瓨 鈫?绾㈣壊
                 dialog.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(Color.BLACK)
                 dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(Color.RED)
             } else {
@@ -361,7 +483,7 @@ class AddTaskFragment : Fragment() {
             }
         }
 
-        // 保存
+        // 淇濆瓨
         btnSave.setOnClickListener {
             val title = etTitle.text.toString().trim()
             if (title.isEmpty()) {
@@ -369,24 +491,15 @@ class AddTaskFragment : Fragment() {
                 return@setOnClickListener
             }
 
-            val todayBase = Calendar.getInstance().apply {
-                set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
-            }
-            val startCal = (todayBase.clone() as Calendar).apply {
-                set(Calendar.HOUR_OF_DAY, startHour); set(Calendar.MINUTE, startMinute)
-            }
-            val endCal = (todayBase.clone() as Calendar).apply {
-                set(Calendar.HOUR_OF_DAY, endHour); set(Calendar.MINUTE, endMinute)
-            }
+            val startCal = buildStartCalendar(existingTask?.startTime)
+            val endCal = buildEndCalendar(existingTask?.endTime ?: existingTask?.startTime, startCal)
             val reminderTime = reminderOffsetMinutes?.let { offset ->
                 if (offset > 0) startCal.timeInMillis - offset * 60000L else null
             }
             val repeatKey = repeatKeys[spinnerRepeat.selectedItemPosition]
             val repeatDaysStr = if (repeatKey == "custom")
                 selectedDays.sorted().joinToString(",") else ""
-
-            val tagNames = etCategory.text.toString()
-                .split(",").map { it.trim() }.filter { it.isNotEmpty() }
+            val tagNames = normalizedTagNames(etCategory.text.toString())
 
             val task = existingTask?.copy(
                 title = title,
@@ -418,3 +531,4 @@ class AddTaskFragment : Fragment() {
         }
     }
 }
+

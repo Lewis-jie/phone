@@ -12,23 +12,49 @@ interface TagDao {
     @Query("SELECT * FROM tags WHERE name = :name LIMIT 1")
     suspend fun getTagByName(name: String): Tag?
 
+    @Query("SELECT * FROM tags ORDER BY id ASC")
+    suspend fun getAllTagsSync(): List<Tag>
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertTag(tag: Tag): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTags(tags: List<Tag>)
 
     @Delete
     suspend fun deleteTag(tag: Tag)
 
-    @Query("SELECT * FROM tags INNER JOIN task_tags ON tags.id = task_tags.tagId WHERE task_tags.taskId = :taskId")
+    @Query(
+        """
+        SELECT tags.id, tags.name, tags.color
+        FROM tags
+        INNER JOIN task_tags ON tags.id = task_tags.tagId
+        WHERE task_tags.taskId = :taskId
+        """
+    )
     suspend fun getTagsForTask(taskId: Int): List<Tag>
 
-    @Query("SELECT * FROM tags INNER JOIN task_tags ON tags.id = task_tags.tagId WHERE task_tags.taskId = :taskId")
+    @Query(
+        """
+        SELECT tags.id, tags.name, tags.color
+        FROM tags
+        INNER JOIN task_tags ON tags.id = task_tags.tagId
+        WHERE task_tags.taskId = :taskId
+        """
+    )
     fun getTagsForTaskLive(taskId: Int): LiveData<List<Tag>>
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertTaskTag(taskTag: TaskTag)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTaskTags(taskTags: List<TaskTag>)
+
     @Query("DELETE FROM task_tags WHERE taskId = :taskId")
     suspend fun deleteTagsForTask(taskId: Int)
+
+    @Query("SELECT * FROM task_tags ORDER BY taskId ASC, tagId ASC")
+    suspend fun getAllTaskTagsSync(): List<TaskTag>
 
     @Query("SELECT DISTINCT tags.* FROM tags INNER JOIN task_tags ON tags.id = task_tags.tagId ORDER BY tags.name ASC")
     fun getAllUsedTags(): LiveData<List<Tag>>
@@ -62,4 +88,15 @@ interface TagDao {
         """
     )
     fun getTaskTagSummaries(): LiveData<List<TaskTagSummary>>
+    @Query(
+        """
+        SELECT
+            task_tags.taskId AS taskId,
+            COALESCE(MAX(tags.color), 0) AS tagColor
+        FROM task_tags
+        INNER JOIN tags ON tags.id = task_tags.tagId
+        GROUP BY task_tags.taskId
+        """
+    )
+    fun getTaskTagColors(): LiveData<List<TaskTagColorSummary>>
 }

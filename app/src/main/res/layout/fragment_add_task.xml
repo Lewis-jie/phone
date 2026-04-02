@@ -4,7 +4,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="?attr/colorSurface">
+    >
 
     <ScrollView
         android:id="@+id/scroll_content"
@@ -34,7 +34,8 @@
                     android:id="@+id/btn_back"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="←"
+                    android:contentDescription="@string/common_back"
+                    android:text="@string/common_back_arrow"
                     android:textSize="20sp"
                     android:padding="4dp"
                     android:clickable="true"
@@ -47,7 +48,7 @@
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:gravity="center"
-                    android:text="新建待办"
+                    android:text="@string/add_task_title_new"
                     android:textSize="20sp"
                     android:textStyle="bold" />
 
@@ -62,8 +63,9 @@
                 android:id="@+id/et_title"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:hint="待办标题 *"
+                android:hint="@string/add_task_title_hint"
                 android:background="@drawable/bg_time_picker_row"
+                android:importantForAutofill="no"
                 android:paddingHorizontal="16dp"
                 android:paddingVertical="12dp"
                 android:inputType="text"
@@ -73,8 +75,9 @@
                 android:id="@+id/et_category"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:hint="标签"
+                android:hint="@string/add_task_tags_hint"
                 android:background="@drawable/bg_time_picker_row"
+                android:importantForAutofill="no"
                 android:paddingHorizontal="16dp"
                 android:paddingVertical="12dp"
                 android:inputType="textNoSuggestions"
@@ -110,7 +113,7 @@
                     android:layout_height="match_parent"
                     android:layout_weight="1"
                     android:gravity="center"
-                    android:text="08:00"
+                    android:text="@string/add_task_default_start"
                     android:textSize="17sp"
                     android:textStyle="bold"
                     android:clickable="true"
@@ -128,7 +131,7 @@
                     android:layout_height="match_parent"
                     android:layout_weight="1"
                     android:gravity="center"
-                    android:text="09:00"
+                    android:text="@string/add_task_default_end"
                     android:textSize="17sp"
                     android:textStyle="bold"
                     android:clickable="true"
@@ -143,7 +146,7 @@
                 android:layout_height="48dp"
                 android:gravity="center_vertical|start"
                 android:paddingHorizontal="16dp"
-                android:text="点击选择到期日期"
+                android:text="@string/add_task_due_date_hint"
                 android:textColor="?attr/colorOnSurfaceVariant"
                 android:background="@drawable/bg_time_picker_row"
                 android:clickable="true"
@@ -156,7 +159,7 @@
                 android:layout_height="48dp"
                 android:gravity="center_vertical|start"
                 android:paddingHorizontal="16dp"
-                android:text="提醒：不提醒"
+                android:text="@string/add_task_reminder_none"
                 android:background="@drawable/bg_time_picker_row"
                 android:clickable="true"
                 android:focusable="true"
@@ -182,8 +185,9 @@
                 android:id="@+id/et_description"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:hint="描述"
+                android:hint="@string/add_task_description_hint"
                 android:background="@drawable/bg_time_picker_row"
+                android:importantForAutofill="no"
                 android:paddingHorizontal="16dp"
                 android:paddingVertical="12dp"
                 android:minLines="3"
@@ -197,6 +201,7 @@
 
     <LinearLayout
         android:id="@+id/bottom_bar"
+        style="?android:attr/buttonBarStyle"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
@@ -208,10 +213,11 @@
 
         <Button
             android:id="@+id/btn_save"
+            style="?android:attr/buttonBarButtonStyle"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="保存"
+            android:text="@string/common_save"
             android:layout_marginEnd="8dp" />
 
         <Button
@@ -220,7 +226,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="删除"
+            android:text="@string/common_delete"
             android:visibility="gone" />
 
     </LinearLayout>

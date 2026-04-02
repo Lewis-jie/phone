@@ -9,6 +9,7 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
+import androidx.core.graphics.withTranslation
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -25,8 +26,15 @@ class TaskListFragment : Fragment() {
 
     private val viewModel: TaskViewModel by viewModels()
     private lateinit var adapter: TaskAdapter
-    private var selectedChip: Chip? = null
     private var latestSections: List<TaskListItem> = emptyList()
+    private var latestTagSummaries: List<TaskTagSummary> = emptyList()
+    private var latestTagColorSummaries: List<TaskTagColorSummary> = emptyList()
+    private var latestTasks: List<Task> = emptyList()
+    private var selectedTagName: String? = null
+    private var selectedStarOnly = false
+    private var allChip: Chip? = null
+    private var starChip: Chip? = null
+    private val tagChipMap = linkedMapOf<String, Chip>()
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -40,7 +48,9 @@ class TaskListFragment : Fragment() {
 
         val recyclerView = view.findViewById<RecyclerView>(R.id.recycler_view)
         val fab = view.findViewById<FloatingActionButton>(R.id.fab_add_task)
+        val fixedChipGroup = view.findViewById<ChipGroup>(R.id.chip_group_fixed)
         val chipGroup = view.findViewById<ChipGroup>(R.id.chip_group_categories)
+        val btnHistory = view.findViewById<View>(R.id.btn_history)
 
         adapter = TaskAdapter(
             onTaskClick = { task ->
@@ -125,17 +135,12 @@ class TaskListFragment : Fragment() {
 
         val primaryColor = ThemeHelper.getPrimaryColor(requireContext())
 
-        fun selectChip(chip: Chip, filter: String?) {
-            if (chip == selectedChip) return
-            selectedChip?.isChecked = false
-            chip.isChecked = true
-            selectedChip = chip
-            viewModel.setFilter(filter)
-        }
-
         fun setupChips(tags: List<Tag>) {
+            fixedChipGroup.removeAllViews()
             chipGroup.removeAllViews()
-            selectedChip = null
+            allChip = null
+            starChip = null
+            tagChipMap.clear()
 
             val bgStateList = android.content.res.ColorStateList(
                 arrayOf(
@@ -152,58 +157,72 @@ class TaskListFragment : Fragment() {
                 intArrayOf(android.graphics.Color.WHITE, primaryColor)
             )
 
-            val allChip = Chip(requireContext()).apply {
+            allChip = Chip(requireContext()).apply {
                 text = "全部"
                 isCheckable = true
-                isChecked = true
                 chipBackgroundColor = bgStateList
                 setTextColor(textStateList)
-                setOnClickListener { selectChip(this, null) }
+                setOnClickListener {
+                    selectedTagName = null
+                    selectedStarOnly = false
+                    syncChipSelection()
+                    applyFilters()
+                }
             }
-            chipGroup.addView(allChip)
-            selectedChip = allChip
+            fixedChipGroup.addView(allChip)
 
-            val starChip = Chip(requireContext()).apply {
+            starChip = Chip(requireContext()).apply {
                 isCheckable = true
                 chipBackgroundColor = bgStateList
 
                 val starSizePx = (18f * resources.displayMetrics.density).toInt()
                 val starDrawable = androidx.appcompat.content.res.AppCompatResources
-                    .getDrawable(requireContext(), R.drawable.ic_star_filled)!!.mutate()
-                starDrawable.setBounds(0, 0, starSizePx, starSizePx)
-                starDrawable.setTint(0xFFFFB800.toInt())
+                    .getDrawable(requireContext(), R.drawable.ic_star_filled)
+                    ?.mutate()
 
                 val spannable = android.text.SpannableString("  ")
                 val dx = (2f * resources.displayMetrics.density).toInt()
                 val dy = (2f * resources.displayMetrics.density).toInt()
 
-                spannable.setSpan(
-                    object : android.text.style.ImageSpan(starDrawable, ALIGN_BASELINE) {
-                        override fun draw(
-                            canvas: android.graphics.Canvas,
-                            text: CharSequence?,
-                            start: Int,
-                            end: Int,
-                            x: Float,
-                            top: Int,
-                            y: Int,
-                            bottom: Int,
-                            paint: android.graphics.Paint
-                        ) {
-                            canvas.save()
-                            canvas.translate(dx.toFloat(), dy.toFloat())
-                            super.draw(canvas, text, start, end, x, top, y, bottom, paint)
-                            canvas.restore()
-                        }
-                    },
-                    0,
-                    1,
-                    android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-                )
+                starDrawable?.let { drawable ->
+                    drawable.setBounds(0, 0, starSizePx, starSizePx)
+                    drawable.setTint(0xFFFFB800.toInt())
+                    spannable.setSpan(
+                        object : android.text.style.ImageSpan(drawable, ALIGN_BASELINE) {
+                            override fun draw(
+                                canvas: android.graphics.Canvas,
+                                text: CharSequence?,
+                                start: Int,
+                                end: Int,
+                                x: Float,
+                                top: Int,
+                                y: Int,
+                                bottom: Int,
+                                paint: android.graphics.Paint
+                            ) {
+                                canvas.withTranslation(dx.toFloat(), dy.toFloat()) {
+                                    super.draw(canvas, text, start, end, x, top, y, bottom, paint)
+                                }
+                            }
+                        },
+                        0,
+                        1,
+                        android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                    )
+                }
                 text = spannable
-                setOnClickListener { selectChip(this, "★") }
+                setOnClickListener {
+                    if (selectedTagName == null && !selectedStarOnly) {
+                        selectedStarOnly = true
+                    } else {
+                        selectedStarOnly = !selectedStarOnly
+                    }
+                    normalizeSelection()
+                    syncChipSelection()
+                    applyFilters()
+                }
             }
-            chipGroup.addView(starChip)
+            fixedChipGroup.addView(starChip)
 
             tags.forEach { tag ->
                 val chip = Chip(requireContext()).apply {
@@ -211,34 +230,91 @@ class TaskListFragment : Fragment() {
                     isCheckable = true
                     chipBackgroundColor = bgStateList
                     setTextColor(textStateList)
-                    setOnClickListener { selectChip(this, tag.name) }
+                    setOnClickListener {
+                        selectedTagName = if (selectedTagName == tag.name) null else tag.name
+                        normalizeSelection()
+                        syncChipSelection()
+                        applyFilters()
+                    }
                 }
+                tagChipMap[tag.name] = chip
                 chipGroup.addView(chip)
             }
+
+            syncChipSelection()
         }
 
         viewModel.allUsedTags.observe(viewLifecycleOwner) { tags -> setupChips(tags) }
         viewModel.allTaskTagSummaries.observe(viewLifecycleOwner) { summaries ->
-            val visibleTaskIds = latestSections
-                .asSequence()
-                .filterIsInstance<TaskListItem.TaskItem>()
-                .map { it.task.id }
-                .toSet()
-            val tagMap = summaries
-                .asSequence()
-                .filter { it.taskId in visibleTaskIds }
-                .associate { it.taskId to it.tagNames }
-            adapter.updateTagsMap(tagMap)
+            latestTagSummaries = summaries
+            syncVisibleTaskDecorations()
+        }
+        viewModel.allTaskTagColorSummaries.observe(viewLifecycleOwner) { summaries ->
+            latestTagColorSummaries = summaries
+            syncVisibleTaskDecorations()
         }
 
-        viewModel.filteredTasks.observe(viewLifecycleOwner) { tasks ->
-            val sections = buildSections(tasks)
-            latestSections = sections
-            adapter.submitList(sections)
+        viewModel.allTasks.observe(viewLifecycleOwner) { tasks ->
+            latestTasks = tasks
+            applyFilters()
         }
 
         fab.backgroundTintList = android.content.res.ColorStateList.valueOf(primaryColor)
         fab.setOnClickListener { findNavController().navigate(R.id.action_taskList_to_addTask) }
+        btnHistory.setOnClickListener { findNavController().navigate(R.id.action_taskList_to_history) }
+    }
+
+    private fun syncVisibleTaskDecorations() {
+        val visibleTaskIds = latestSections
+            .asSequence()
+            .filterIsInstance<TaskListItem.TaskItem>()
+            .map { it.task.id }
+            .toSet()
+        val tagMap = latestTagSummaries
+            .asSequence()
+            .filter { it.taskId in visibleTaskIds }
+            .associate { it.taskId to it.tagNames }
+        val colorMap = latestTagColorSummaries
+            .asSequence()
+            .filter { it.taskId in visibleTaskIds }
+            .associate { it.taskId to it.tagColor }
+        adapter.updateTagsMap(tagMap)
+        adapter.updateTagColorMap(colorMap)
+    }
+
+    private fun normalizeSelection() {
+        if (selectedTagName == null && !selectedStarOnly) {
+            return
+        }
+    }
+
+    private fun syncChipSelection() {
+        val isAllSelected = selectedTagName == null && !selectedStarOnly
+        allChip?.isChecked = isAllSelected
+        starChip?.isChecked = selectedStarOnly
+        tagChipMap.forEach { (tagName, chip) ->
+            chip.isChecked = selectedTagName == tagName
+        }
+    }
+
+    private fun applyFilters() {
+        val tagMap = latestTagSummaries.associate { summary ->
+            summary.taskId to summary.tagNames
+                .split(Regex("\\s+[·路]\\s+"))
+                .filter { it.isNotBlank() }
+                .toSet()
+        }
+        val filtered = latestTasks.filter { task ->
+            val tagMatched = selectedTagName?.let { selected ->
+                selected in (tagMap[task.id] ?: emptySet())
+            } ?: true
+            val starMatched = if (selectedStarOnly) task.isStarred else true
+            tagMatched && starMatched
+        }
+        val sections = buildSections(filtered)
+        latestSections = sections
+        adapter.submitList(sections)
+        syncVisibleTaskDecorations()
     }
 
     private fun buildSections(tasks: List<Task>): List<TaskListItem> {

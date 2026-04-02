@@ -1,9 +1,13 @@
 package com.lewis.timetable
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
-@Entity(tableName = "tasks")
+@Entity(
+    tableName = "tasks",
+    indices = [Index("startTime"), Index("parentTaskId")]
+)
 data class Task(
     @PrimaryKey(autoGenerate = true)
     val id: Int = 0,

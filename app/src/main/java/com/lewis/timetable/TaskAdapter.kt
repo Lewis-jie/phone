@@ -40,6 +40,7 @@ class TaskAdapter(
 
     /** taskId → "标签1 · 标签2"，由 TaskListFragment 异步填充 */
     var tagsMap: Map<Int, String> = emptyMap()
+    var tagColorMap: Map<Int, Int> = emptyMap()
 
     companion object {
         private const val TYPE_HEADER = 0
@@ -50,6 +51,12 @@ class TaskAdapter(
     fun updateTagsMap(newTagsMap: Map<Int, String>) {
         if (tagsMap == newTagsMap) return
         tagsMap = newTagsMap
+        notifyItemRangeChanged(0, itemCount)
+    }
+
+    fun updateTagColorMap(newTagColorMap: Map<Int, Int>) {
+        if (tagColorMap == newTagColorMap) return
+        tagColorMap = newTagColorMap
         notifyItemRangeChanged(0, itemCount)
     }
 
@@ -64,6 +71,7 @@ class TaskAdapter(
         val cbCompleted:CheckBox  = view.findViewById(R.id.cb_completed)
         val btnStar:    ImageView = view.findViewById(R.id.btn_star)
         val root:       LinearLayout = view.findViewById(R.id.task_item_root)
+        val stripe:     View = view.findViewById(R.id.view_tag_stripe)
     }
 
     // ── 创建 ─────────────────────────────────
@@ -110,6 +118,9 @@ class TaskAdapter(
         val subtitle = listOfNotNull(tagsStr, safeDateStr).joinToString("   ")
         holder.tvCategory.text = subtitle
         holder.tvCategory.visibility = if (subtitle.isEmpty()) View.GONE else View.VISIBLE
+        holder.stripe.setBackgroundColor(
+            tagColorMap[task.id]?.takeIf { it != 0 } ?: TagColorManager.NO_TAG_COLOR
+        )
 
         // ── 文字颜色 ─────────────────────────
         holder.tvTitle.setTextColor(when {

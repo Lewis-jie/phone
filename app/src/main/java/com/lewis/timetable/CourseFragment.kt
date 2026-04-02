@@ -19,6 +19,7 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.navigation.fragment.findNavController
 import com.google.android.material.bottomsheet.BottomSheetDialog
+import androidx.core.graphics.toColorInt
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
@@ -118,7 +119,7 @@ class CourseFragment : Fragment() {
         gridContainer.removeAllViews()
         if (lessonList.isEmpty() && scheduleList.isEmpty()) {
             gridContainer.addView(TextView(requireContext()).apply {
-                text = "暂无课表，点击右上角 + 导入"
+                text = getString(R.string.course_empty_import)
                 textSize = 14f
                 gravity = Gravity.CENTER
                 setPadding(0, 80, 0, 0)
@@ -134,7 +135,11 @@ class CourseFragment : Fragment() {
         val dayNames = listOf("一", "二", "三", "四", "五", "六", "日")
         val dateFormat = SimpleDateFormat("M/d", Locale.getDefault())
         val sunday = (currentMonday.clone() as Calendar).apply { add(Calendar.DAY_OF_MONTH, 6) }
-        tvWeekRange.text = "${dateFormat.format(currentMonday.time)} ~ ${dateFormat.format(sunday.time)}"
+        tvWeekRange.text = getString(
+            R.string.format_range,
+            dateFormat.format(currentMonday.time),
+            dateFormat.format(sunday.time)
+        )
         val displaySlotCount = CourseLesson.slotCount(timetablePeriods, lessonList)
 
         val labelWidth = (62 * density).toInt()
@@ -179,7 +184,11 @@ class CourseFragment : Fragment() {
         for (i in 0..6) {
             val dayCal = (currentMonday.clone() as Calendar).apply { add(Calendar.DAY_OF_MONTH, i) }
             headerRow.addView(TextView(requireContext()).apply {
-                text = "${dayNames[i]}\n${dateFormat.format(dayCal.time)}"
+                text = getString(
+                    R.string.format_day_date,
+                    dayNames[i],
+                    dateFormat.format(dayCal.time)
+                )
                 textSize = 10f
                 gravity = Gravity.CENTER
                 setTextColor(Color.BLACK)
@@ -198,7 +207,7 @@ class CourseFragment : Fragment() {
 
         val labelColumn = FrameLayout(requireContext()).apply {
             layoutParams = LinearLayout.LayoutParams(labelWidth, totalHeight)
-            setBackgroundColor(Color.parseColor("#F7F7F7"))
+            setBackgroundColor("#F7F7F7".toColorInt())
         }
         slotHeights.indices.forEach { slot ->
             val top = slotTops[slot]
@@ -207,24 +216,24 @@ class CourseFragment : Fragment() {
                 text = buildSlotAxisLabel(slot)
                 textSize = 9f
                 gravity = Gravity.CENTER
-                setTextColor(Color.parseColor("#666666"))
+                setTextColor("#666666".toColorInt())
                 layoutParams = FrameLayout.LayoutParams(labelWidth, height).apply {
                     topMargin = top
                 }
-                setBackgroundColor(Color.parseColor("#F7F7F7"))
+                setBackgroundColor("#F7F7F7".toColorInt())
             })
             labelColumn.addView(View(requireContext()).apply {
                 layoutParams = FrameLayout.LayoutParams(labelWidth, 1).apply {
                     topMargin = top
                 }
-                setBackgroundColor(Color.parseColor("#E5E5E5"))
+                setBackgroundColor("#E5E5E5".toColorInt())
             })
         }
         labelColumn.addView(View(requireContext()).apply {
             layoutParams = FrameLayout.LayoutParams(labelWidth, 1).apply {
                 topMargin = totalHeight - 1
             }
-            setBackgroundColor(Color.parseColor("#E5E5E5"))
+            setBackgroundColor("#E5E5E5".toColorInt())
         })
         bodyRow.addView(labelColumn)
 
@@ -239,14 +248,14 @@ class CourseFragment : Fragment() {
                     layoutParams = FrameLayout.LayoutParams(dayWidth, 1).apply {
                         topMargin = slotTops[slot]
                     }
-                    setBackgroundColor(Color.parseColor("#ECECEC"))
+                    setBackgroundColor("#ECECEC".toColorInt())
                 })
             }
             dayCol.addView(View(requireContext()).apply {
                 layoutParams = FrameLayout.LayoutParams(dayWidth, 1).apply {
                     topMargin = totalHeight - 1
                 }
-                setBackgroundColor(Color.parseColor("#ECECEC"))
+                setBackgroundColor("#ECECEC".toColorInt())
             })
 
             buildMergedLessonBlocks(lessonList.filter { it.dayOfWeek == day && it.slotIndex in slotHeights.indices }).forEachIndexed { blockIndex, block ->
@@ -391,7 +400,7 @@ class CourseFragment : Fragment() {
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         val editButton = TextView(requireContext()).apply {
-            text = "编辑"
+            text = getString(R.string.common_edit)
             textSize = 13f
             setTextColor(ThemeHelper.getPrimaryColor(requireContext()))
             setOnClickListener {
@@ -420,7 +429,7 @@ class CourseFragment : Fragment() {
                 addView(TextView(requireContext()).apply {
                     text = label
                     textSize = 13f
-                    setTextColor(Color.parseColor("#888888"))
+                    setTextColor("#888888".toColorInt())
                     layoutParams = LinearLayout.LayoutParams((72 * density).toInt(), LinearLayout.LayoutParams.WRAP_CONTENT)
                 })
                 addView(TextView(requireContext()).apply {
@@ -432,10 +441,10 @@ class CourseFragment : Fragment() {
             })
         }
 
-        infoRow("上课时间", slotLabel)
-        infoRow("任课教师", lesson.teacher)
-        infoRow("上课教室", lesson.classroom)
-        infoRow("班级", lesson.className)
+        infoRow(getString(R.string.course_info_time), slotLabel)
+        infoRow(getString(R.string.course_info_teacher), lesson.teacher)
+        infoRow(getString(R.string.course_info_classroom), lesson.classroom)
+        infoRow(getString(R.string.course_info_class_name), lesson.className)
 
         sheet.setContentView(content)
         sheet.show()
@@ -492,5 +501,6 @@ class CourseFragment : Fragment() {
             current.weekBitmap == next.weekBitmap
     }
 
-    private fun minToTime(min: Int): String = String.format("%02d:%02d", min / 60, min % 60)
+    private fun minToTime(min: Int): String =
+        String.format(Locale.getDefault(), "%02d:%02d", min / 60, min % 60)
 }

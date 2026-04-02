@@ -15,11 +15,13 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
+import androidx.core.graphics.toColorInt
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import kotlinx.coroutines.launch
-import java.util.Calendar
 import java.nio.charset.Charset
+import java.util.Calendar
+import java.util.Locale
 
 class ImportCourseFragment : Fragment() {
 
@@ -31,19 +33,20 @@ class ImportCourseFragment : Fragment() {
     ) { uri ->
         uri ?: return@registerForActivityResult
         val parser = selectedParser ?: return@registerForActivityResult
+        val ctx = context ?: return@registerForActivityResult
         lifecycleScope.launch {
-            val htmlBytes = requireContext().contentResolver
+            val htmlBytes = ctx.contentResolver
                 .openInputStream(uri)
                 ?.use { it.readBytes() }
                 ?: run {
-                    Toast.makeText(requireContext(), "无法读取文件", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(ctx, "无法读取文件", Toast.LENGTH_SHORT).show()
                     return@launch
                 }
             val html = decodeHtml(htmlBytes)
 
             if (!parser.validate(html)) {
                 Toast.makeText(
-                    requireContext(),
+                    ctx,
                     "导入失败：请上传${parser.schoolName}教务系统导出的课表 HTML 页面",
                     Toast.LENGTH_LONG
                 ).show()
@@ -52,7 +55,7 @@ class ImportCourseFragment : Fragment() {
 
             val parseResult = parser.parse(html)
             if (parseResult.lessons.isEmpty() && parseResult.conflicts.isEmpty()) {
-                Toast.makeText(requireContext(), "未能解析到课程，请检查文件内容", Toast.LENGTH_SHORT).show()
+                Toast.makeText(ctx, "未能解析到课程，请检查文件内容", Toast.LENGTH_SHORT).show()
                 return@launch
             }
 
@@ -276,7 +279,7 @@ class ImportCourseFragment : Fragment() {
         return LinearLayout(requireContext()).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(padding, padding, padding, padding)
-            setBackgroundColor(android.graphics.Color.parseColor("#F7F7F7"))
+            setBackgroundColor("#F7F7F7".toColorInt())
 
             addView(TextView(requireContext()).apply {
                 text = choice.courseName
@@ -294,9 +297,9 @@ class ImportCourseFragment : Fragment() {
 
     private fun LinearLayout.addDetailRow(label: String, value: String) {
         addView(TextView(context).apply {
-            text = "$label：$value"
+            text = context.getString(R.string.format_label_value, label, value)
             textSize = 13f
-            setTextColor(android.graphics.Color.parseColor("#444444"))
+            setTextColor("#444444".toColorInt())
         })
     }
 
@@ -317,7 +320,7 @@ class ImportCourseFragment : Fragment() {
 
     private fun showTotalWeeksDialog(defaultTotalWeeks: Int, onConfirmed: (Int) -> Unit) {
         val editText = EditText(requireContext()).apply {
-            setText(defaultTotalWeeks.toString())
+            setText(String.format(Locale.getDefault(), "%d", defaultTotalWeeks))
             hint = "学期总周数"
             inputType = android.text.InputType.TYPE_CLASS_NUMBER
             setPadding(48, 24, 48, 24)

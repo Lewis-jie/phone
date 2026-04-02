@@ -7,10 +7,15 @@ class TaskRepository(
     private val tagDao: TagDao
 ) {
 
-    val allTasks: LiveData<List<Task>> = taskDao.getAllTasks()
-    val allUsedTags: LiveData<List<Tag>> = tagDao.getAllUsedTags()
-    val starredTasks: LiveData<List<Task>> = taskDao.getStarredTasks()
-    val allTaskTagSummaries: LiveData<List<TaskTagSummary>> = tagDao.getTaskTagSummaries()
+    val allTasks: LiveData<List<Task>> by lazy(LazyThreadSafetyMode.NONE) { taskDao.getAllTasks() }
+    val allUsedTags: LiveData<List<Tag>> by lazy(LazyThreadSafetyMode.NONE) { tagDao.getAllUsedTags() }
+    val starredTasks: LiveData<List<Task>> by lazy(LazyThreadSafetyMode.NONE) { taskDao.getStarredTasks() }
+    val allTaskTagSummaries: LiveData<List<TaskTagSummary>> by lazy(LazyThreadSafetyMode.NONE) {
+        tagDao.getTaskTagSummaries()
+    }
+    val allTaskTagColorSummaries: LiveData<List<TaskTagColorSummary>> by lazy(LazyThreadSafetyMode.NONE) {
+        tagDao.getTaskTagColors()
+    }
 
     suspend fun getTaskById(id: Int): Task? = taskDao.getTaskById(id)
     suspend fun getTaskByStartTime(startTime: Long): Task? = taskDao.getTaskByStartTime(startTime)

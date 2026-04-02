@@ -2,7 +2,6 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#F4F7FB"
     android:orientation="vertical">
 
     <LinearLayout
@@ -18,9 +17,10 @@
             android:layout_height="48dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:clickable="true"
+            android:contentDescription="@string/common_back"
             android:focusable="true"
             android:gravity="center"
-            android:text="←"
+            android:text="@string/common_back_arrow"
             android:textColor="@android:color/black"
             android:textSize="20sp" />
 
@@ -28,7 +28,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="编辑课程"
+            android:text="@string/course_edit_title"
             android:textColor="@android:color/black"
             android:textSize="20sp"
             android:textStyle="bold" />
@@ -41,7 +41,7 @@
             android:clickable="true"
             android:focusable="true"
             android:paddingHorizontal="8dp"
-            android:text="保存"
+            android:text="@string/common_save"
             android:textColor="?attr/colorPrimary"
             android:textSize="15sp"
             android:textStyle="bold" />
@@ -81,7 +81,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="课程名称"
+                        android:text="@string/course_name_label"
                         android:textColor="#6F7C8E"
                         android:textSize="12sp" />
 
@@ -91,7 +91,8 @@
                         android:layout_height="48dp"
                         android:layout_marginTop="8dp"
                         android:background="@android:color/transparent"
-                        android:hint="输入课程名称"
+                        android:hint="@string/course_name_hint"
+                        android:importantForAutofill="no"
                         android:inputType="text"
                         android:paddingHorizontal="14dp"
                         android:textColor="@android:color/black"
@@ -106,7 +107,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="16dp"
-                        android:text="课程颜色"
+                        android:text="@string/course_color_label"
                         android:textColor="#6F7C8E"
                         android:textSize="12sp" />
 
@@ -130,7 +131,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="8dp"
-                android:text="上课时段"
+                android:text="@string/course_slots_title"
                 android:textColor="#526173"
                 android:textSize="13sp"
                 android:textStyle="bold" />
@@ -147,7 +148,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="52dp"
                 android:layout_marginTop="4dp"
-                android:text="添加上课时段"
+                android:text="@string/course_add_slot"
                 android:textAllCaps="false"
                 android:textSize="15sp"
                 app:cornerRadius="18dp"

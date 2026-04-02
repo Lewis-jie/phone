@@ -82,13 +82,13 @@ class CourseSettingsFragment : Fragment() {
         view.findViewById<View>(R.id.btn_weeks_minus).setOnClickListener {
             if (totalWeeks > 1) {
                 totalWeeks--
-                tvWeeks.text = totalWeeks.toString()
+                tvWeeks.text = String.format(Locale.getDefault(), "%d", totalWeeks)
             }
         }
         view.findViewById<View>(R.id.btn_weeks_plus).setOnClickListener {
             if (totalWeeks < 40) {
                 totalWeeks++
-                tvWeeks.text = totalWeeks.toString()
+                tvWeeks.text = String.format(Locale.getDefault(), "%d", totalWeeks)
             }
         }
 
@@ -163,21 +163,29 @@ class CourseSettingsFragment : Fragment() {
         }
 
         btnNewTimetable.setOnClickListener {
+            val scheduleId = selectedSchedule?.id ?: vm.getSelectedId()
             findNavController().navigate(
                 R.id.action_courseSettings_to_timetableEditor,
-                Bundle().apply { putInt("timetableId", -1) }
+                Bundle().apply {
+                    putInt("timetableId", -1)
+                    putInt("bindScheduleId", scheduleId)
+                }
             )
         }
 
         btnEditTimetable.setOnClickListener {
             val timetableId = selectedSchedule?.timetableId ?: 0
+            val scheduleId = selectedSchedule?.id ?: vm.getSelectedId()
             if (timetableId <= 0) {
                 Toast.makeText(requireContext(), "当前课表未绑定时间表", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
             findNavController().navigate(
                 R.id.action_courseSettings_to_timetableEditor,
-                Bundle().apply { putInt("timetableId", timetableId) }
+                Bundle().apply {
+                    putInt("timetableId", timetableId)
+                    putInt("bindScheduleId", scheduleId)
+                }
             )
         }
     }
@@ -186,7 +194,7 @@ class CourseSettingsFragment : Fragment() {
         selectedSchedule = schedule
         semesterStartMs = schedule.semesterStart
         totalWeeks = schedule.totalWeeks
-        tvWeeks.text = totalWeeks.toString()
+        tvWeeks.text = String.format(Locale.getDefault(), "%d", totalWeeks)
         tvSemesterStart.text = if (semesterStartMs > 0) {
             formatSemesterStart(semesterStartMs)
         } else {

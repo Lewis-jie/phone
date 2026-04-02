@@ -2,10 +2,12 @@ package com.lewis.timetable
 
 import androidx.room.Entity
 import androidx.room.ForeignKey
+import androidx.room.Index
 
 @Entity(
     tableName = "task_tags",
     primaryKeys = ["taskId", "tagId"],
+    indices = [Index("taskId"), Index("tagId")],
     foreignKeys = [
         ForeignKey(
             entity = Task::class,

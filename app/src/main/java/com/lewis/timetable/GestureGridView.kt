@@ -16,6 +16,13 @@ class GestureGridView @JvmOverloads constructor(
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         gestureDetector?.onTouchEvent(event)
+        if (event.actionMasked == MotionEvent.ACTION_UP) {
+            performClick()
+        }
         return super.onTouchEvent(event)
+    }
+
+    override fun performClick(): Boolean {
+        return super.performClick()
     }
 }

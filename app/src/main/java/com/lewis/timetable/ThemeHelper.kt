@@ -2,6 +2,7 @@ package com.lewis.timetable
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.core.content.edit
 
 object ThemeHelper {
 
@@ -49,17 +50,19 @@ object ThemeHelper {
      * 选择预设主题时调用（CategoryFragment 色块点击）。
      */
     fun savePresetTheme(context: Context, themeKey: String) {
-        prefs(context).edit().putString(KEY_THEME, themeKey).apply()
+        prefs(context).edit {
+            putString(KEY_THEME, themeKey)
+        }
     }
 
     /**
      * 选择自定义颜色时调用（颜色对话框确定）。
      */
     fun saveCustomColor(context: Context, color: Int) {
-        prefs(context).edit()
-            .putString(KEY_THEME, THEME_CUSTOM)
-            .putInt(KEY_CUSTOM, color)
-            .apply()
+        prefs(context).edit {
+            putString(KEY_THEME, THEME_CUSTOM)
+            putInt(KEY_CUSTOM, color)
+        }
     }
 
     /**

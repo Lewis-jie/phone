@@ -1,6 +1,8 @@
 package com.lewis.timetable
 
 import android.app.Activity
+import android.content.Context
+import android.content.ContentValues
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -8,7 +10,10 @@ import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Shader
+import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.provider.MediaStore
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
@@ -19,19 +24,21 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
+import androidx.core.content.edit
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
-import androidx.lifecycle.LiveData
-import androidx.lifecycle.Observer
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import com.github.mikephil.charting.charts.BarChart
 import com.github.mikephil.charting.components.XAxis
 import com.github.mikephil.charting.data.*
 import com.github.mikephil.charting.formatter.IndexAxisValueFormatter
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -48,25 +55,63 @@ class CategoryFragment : Fragment() {
         ThemeHelper.THEME_BROWN  to 0xFFAA9070.toInt(),
     )
 
+    private val backupImportLauncher = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        uri ?: return@registerForActivityResult
+        val ctx = context ?: return@registerForActivityResult
+        lifecycleScope.launch {
+            try {
+                val json = ctx.contentResolver
+                    .openInputStream(uri)
+                    ?.bufferedReader()
+                    ?.use { it.readText() }
+                    ?: return@launch
+                val imported = importBackupJsonSafe(json)
+                Toast.makeText(
+                    ctx,
+                    "\u6210\u529f\u6062\u590d ${imported.tasks.size} \u4e2a\u5f85\u529e\u3001${imported.tags.size} \u4e2a\u6807\u7b7e\u3001${imported.schedules.size} \u4e2a\u8bfe\u8868",
+                    Toast.LENGTH_LONG
+                ).show()
+            } catch (e: Exception) {
+                Toast.makeText(
+                    ctx,
+                    "\u5bfc\u5165\u5931\u8d25\uff1a${e.message ?: e.javaClass.simpleName}",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+
     private val importLauncher = registerForActivityResult(
         ActivityResultContracts.GetContent()
     ) { uri ->
         uri ?: return@registerForActivityResult
-        try {
-            val json = requireContext().contentResolver
-                .openInputStream(uri)?.bufferedReader()?.readText()
-                ?: return@registerForActivityResult
-            val tasks = jsonToTasks(json)
-            tasks.forEach { task ->
-                viewModel.insertWithTags(task.copy(id = 0, sortOrder = 0), emptyList())
+        val ctx = context ?: return@registerForActivityResult
+        lifecycleScope.launch {
+            try {
+                val json = ctx.contentResolver
+                    .openInputStream(uri)?.bufferedReader()?.readText()
+                    ?: return@launch
+                val imported = importBackupJson(json)
+                Toast.makeText(
+                    ctx,
+                    "成功恢复 ${imported.tasks.size} 个待办、${imported.tags.size} 个标签、${imported.schedules.size} 个课表",
+                    Toast.LENGTH_LONG
+                ).show()
+                return@launch
+                Toast.makeText(
+                    ctx,
+                    "成功恢复 ${imported.tasks.size} 个待办、${imported.tags.size} 个标签、${imported.schedules.size} 个课表",
+                    Toast.LENGTH_LONG
+                ).show()
+            } catch (e: Exception) {
+                Toast.makeText(ctx, "导入失败：${e.message}", Toast.LENGTH_SHORT).show()
+                return@launch
+                Toast.makeText(requireContext(), "导入失败：${e.message}", Toast.LENGTH_SHORT).show()
             }
-            Toast.makeText(requireContext(),
-                "成功导入 ${tasks.size} 个任务", Toast.LENGTH_SHORT).show()
-        } catch (e: Exception) {
-            Toast.makeText(requireContext(), "导入失败：${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
-
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
         savedInstanceState: Bundle?
@@ -104,8 +149,8 @@ class CategoryFragment : Fragment() {
             val todayCompleted = tasks.count { task ->
                 task.isCompleted && task.createdAt in todayStart..todayEnd
             }
-            tvTodayCompleted.text = todayCompleted.toString()
-            tvTotalTasks.text     = tasks.size.toString()
+            tvTodayCompleted.text = NumberFormat.getIntegerInstance().format(todayCompleted)
+            tvTotalTasks.text = NumberFormat.getIntegerInstance().format(tasks.size)
 
             val monday = Calendar.getInstance().apply {
                 set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
@@ -120,7 +165,7 @@ class CategoryFragment : Fragment() {
             val weekTasks = tasks.filter { it.createdAt in monday..sundayEnd }
             val weekRate  = if (weekTasks.isEmpty()) 0
             else (weekTasks.count { it.isCompleted } * 100 / weekTasks.size)
-            tvWeekRate.text = "$weekRate%"
+            tvWeekRate.text = getString(R.string.percent_value, weekRate)
 
             setupBarChart(barChart, tasks, monday)
         }
@@ -317,98 +362,436 @@ class CategoryFragment : Fragment() {
         header.setOnClickListener {
             expanded = !expanded
             subPanel.visibility = if (expanded) View.VISIBLE else View.GONE
-            arrow.text = if (expanded) "∨" else "›"
+            arrow.text = if (expanded) "▼" else "▶"
         }
 
         view.findViewById<View>(R.id.btn_export_data).setOnClickListener {
-            exportData()
+            exportDataSafe()
         }
         view.findViewById<View>(R.id.btn_import_data).setOnClickListener {
-            importLauncher.launch("application/json")
+            backupImportLauncher.launch("application/json")
+        }
+    }
+
+    private fun exportDataSafe() {
+        val ctx = context ?: return
+        lifecycleScope.launch {
+            try {
+                val json = buildBackupJsonSafe()
+                val fileName = "timetable_backup_${
+                    SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+                }.json"
+                val exportHint = withContext(Dispatchers.IO) {
+                    exportBackupFileSafe(ctx, fileName, json)
+                }
+                Toast.makeText(ctx, exportHint, Toast.LENGTH_LONG).show()
+            } catch (e: Exception) {
+                Toast.makeText(
+                    ctx,
+                    "\u5907\u4efd\u5931\u8d25\uff1a${e.message ?: e.javaClass.simpleName}",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+
+    private suspend fun buildBackupJsonSafe(): String {
+        val appContext = requireContext().applicationContext
+        return withContext(Dispatchers.IO) {
+            val db = AppDatabase.getDatabase(appContext)
+            val tasks = db.taskDao().getAllTasksSync()
+            val tags = db.tagDao().getAllTagsSync()
+            val taskTags = db.tagDao().getAllTaskTagsSync()
+            val schedules = db.courseDao().getAllSchedulesSync()
+            val lessons = db.courseDao().getAllLessonsSync()
+            val timetables = db.timetableDao().getAllTimetablesSync()
+            val periods = db.timetableDao().getAllPeriodsSync()
+            val prefs = appContext.getSharedPreferences("app_prefs", Activity.MODE_PRIVATE)
+
+            JSONObject().apply {
+                put("version", 2)
+                put("exportedAt", System.currentTimeMillis())
+                put("activeScheduleId", prefs.getInt("active_schedule_id", 0))
+                put("tasks", JSONArray().apply { tasks.forEach { put(it.toJson()) } })
+                put("tags", JSONArray().apply { tags.forEach { put(it.toJson()) } })
+                put("taskTags", JSONArray().apply { taskTags.forEach { put(it.toJson()) } })
+                put("courseSchedules", JSONArray().apply { schedules.forEach { put(it.toJson()) } })
+                put("courseLessons", JSONArray().apply { lessons.forEach { put(it.toJson()) } })
+                put("timetables", JSONArray().apply { timetables.forEach { put(it.toJson()) } })
+                put("timetablePeriods", JSONArray().apply { periods.forEach { put(it.toJson()) } })
+            }.toString()
+        }
+    }
+
+    private suspend fun importBackupJsonSafe(json: String): ImportedBackup {
+        val appContext = requireContext().applicationContext
+        return withContext(Dispatchers.IO) {
+            val db = AppDatabase.getDatabase(appContext)
+            val imported = parseBackupJson(json)
+
+            db.clearAllTables()
+            if (imported.tasks.isNotEmpty()) db.taskDao().insertTasks(imported.tasks)
+            if (imported.tags.isNotEmpty()) db.tagDao().insertTags(imported.tags)
+            if (imported.taskTags.isNotEmpty()) db.tagDao().insertTaskTags(imported.taskTags)
+            if (imported.timetables.isNotEmpty()) db.timetableDao().insertTimetables(imported.timetables)
+            if (imported.periods.isNotEmpty()) db.timetableDao().insertPeriods(imported.periods)
+            if (imported.schedules.isNotEmpty()) db.courseDao().insertSchedules(imported.schedules)
+            if (imported.lessons.isNotEmpty()) db.courseDao().insertLessons(imported.lessons)
+
+            appContext
+                .getSharedPreferences("app_prefs", Activity.MODE_PRIVATE)
+                .edit {
+                    putInt("active_schedule_id", imported.activeScheduleId)
+                }
+
+            imported
+        }
+    }
+
+    private fun exportBackupFileSafe(context: Context, fileName: String, json: String): String {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val values = ContentValues().apply {
+                put(MediaStore.Downloads.DISPLAY_NAME, fileName)
+                put(MediaStore.Downloads.MIME_TYPE, "application/json")
+                put(MediaStore.Downloads.RELATIVE_PATH, "${Environment.DIRECTORY_DOWNLOADS}/TimeTable")
+                put(MediaStore.Downloads.IS_PENDING, 1)
+            }
+            val resolver = context.contentResolver
+            val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                ?: error("\u65e0\u6cd5\u521b\u5efa\u5907\u4efd\u6587\u4ef6")
+            try {
+                resolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(json) }
+                    ?: error("\u65e0\u6cd5\u5199\u5165\u5907\u4efd\u6587\u4ef6")
+                values.clear()
+                values.put(MediaStore.Downloads.IS_PENDING, 0)
+                resolver.update(uri, values, null, null)
+            } catch (t: Throwable) {
+                resolver.delete(uri, null, null)
+                throw t
+            }
+            "\u5907\u4efd\u6210\u529f\uff1aDownload/TimeTable/$fileName"
+        } else {
+            val dir = java.io.File(
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                "TimeTable"
+            )
+            if (!dir.exists()) dir.mkdirs()
+            java.io.File(dir, fileName).writeText(json)
+            "\u5907\u4efd\u6210\u529f\uff1aDownload/TimeTable/$fileName"
         }
     }
 
     private fun exportData() {
-        observeOnce(viewModel.allTasks) { tasks ->
+        val ctx = context ?: return
+        lifecycleScope.launch {
             try {
-                val json = tasksToJson(tasks)
-                val dir = java.io.File(
-                    android.os.Environment.getExternalStoragePublicDirectory(
-                        android.os.Environment.DIRECTORY_DOWNLOADS
-                    ), "TimeTable"
-                )
-                if (!dir.exists()) dir.mkdirs()
-
+                val json = buildBackupJson()
                 val fileName = "timetable_backup_${
                     SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
                 }.json"
-                val file = java.io.File(dir, fileName)
-                file.writeText(json)
-
-                Toast.makeText(requireContext(),
-                    "备份成功：Download/TimeTable/$fileName", Toast.LENGTH_LONG).show()
+                val exportHint = withContext(Dispatchers.IO) {
+                    exportBackupFile(ctx, fileName, json)
+                }
+                Toast.makeText(ctx, exportHint, Toast.LENGTH_LONG).show()
+                return@launch
+                Toast.makeText(
+                    ctx,
+                    "备份成功：Download/TimeTable/$fileName",
+                    Toast.LENGTH_LONG
+                ).show()
             } catch (e: Exception) {
-                Toast.makeText(requireContext(),
-                    "备份失败：${e.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(ctx, "导出失败：${e.message}", Toast.LENGTH_SHORT).show()
+                return@launch
+                Toast.makeText(
+                    ctx,
+                    "备份失败：${e.message}",
+                    Toast.LENGTH_SHORT
+                ).show()
             }
         }
     }
-
-    private fun tasksToJson(tasks: List<Task>): String {
-        return JSONArray().apply {
-            tasks.forEach { task ->
-                put(JSONObject().apply {
-                    put("id", task.id)
-                    put("title", task.title)
-                    put("description", task.description)
-                    put("startTime", task.startTime)
-                    put("endTime", task.endTime)
-                    put("dueDate", task.dueDate)
-                    put("repeatType", task.repeatType)
-                    put("repeatDays", task.repeatDays)
-                    put("reminderTime", task.reminderTime)
-                    put("isCompleted", task.isCompleted)
-                    put("sortOrder", task.sortOrder)
-                    put("createdAt", task.createdAt)
-                })
-            }
+    private suspend fun buildBackupJson(): String {
+        val appContext = requireContext().applicationContext
+        return withContext(Dispatchers.IO) {
+        val db = AppDatabase.getDatabase(appContext)
+        val tasks = db.taskDao().getAllTasksSync()
+        val tags = db.tagDao().getAllTagsSync()
+        val taskTags = db.tagDao().getAllTaskTagsSync()
+        val schedules = db.courseDao().getAllSchedulesSync()
+        val lessons = db.courseDao().getAllLessonsSync()
+        val timetables = db.timetableDao().getAllTimetablesSync()
+        val periods = db.timetableDao().getAllPeriodsSync()
+        val prefs = appContext.getSharedPreferences("app_prefs", Activity.MODE_PRIVATE)
+        JSONObject().apply {
+            put("version", 2)
+            put("exportedAt", System.currentTimeMillis())
+            put("activeScheduleId", prefs.getInt("active_schedule_id", 0))
+            put("tasks", JSONArray().apply { tasks.forEach { put(it.toJson()) } })
+            put("tags", JSONArray().apply { tags.forEach { put(it.toJson()) } })
+            put("taskTags", JSONArray().apply { taskTags.forEach { put(it.toJson()) } })
+            put("courseSchedules", JSONArray().apply { schedules.forEach { put(it.toJson()) } })
+            put("courseLessons", JSONArray().apply { lessons.forEach { put(it.toJson()) } })
+            put("timetables", JSONArray().apply { timetables.forEach { put(it.toJson()) } })
+            put("timetablePeriods", JSONArray().apply { periods.forEach { put(it.toJson()) } })
         }.toString()
     }
-
-    private fun jsonToTasks(json: String): List<Task> {
-        val array = JSONArray(json)
+    }
+    private suspend fun importBackupJson(json: String): ImportedBackup {
+        val appContext = requireContext().applicationContext
+        return withContext(Dispatchers.IO) {
+        val db = AppDatabase.getDatabase(appContext)
+        val imported = parseBackupJson(json)
+        db.clearAllTables()
+        if (imported.tasks.isNotEmpty()) db.taskDao().insertTasks(imported.tasks)
+        if (imported.tags.isNotEmpty()) db.tagDao().insertTags(imported.tags)
+        if (imported.taskTags.isNotEmpty()) db.tagDao().insertTaskTags(imported.taskTags)
+        if (imported.timetables.isNotEmpty()) db.timetableDao().insertTimetables(imported.timetables)
+        if (imported.periods.isNotEmpty()) db.timetableDao().insertPeriods(imported.periods)
+        if (imported.schedules.isNotEmpty()) db.courseDao().insertSchedules(imported.schedules)
+        if (imported.lessons.isNotEmpty()) db.courseDao().insertLessons(imported.lessons)
+        appContext
+            .getSharedPreferences("app_prefs", Activity.MODE_PRIVATE)
+            .edit {
+                putInt("active_schedule_id", imported.activeScheduleId)
+            }
+        imported
+    }
+    }
+    private fun exportBackupFile(context: android.content.Context, fileName: String, json: String): String {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val values = ContentValues().apply {
+                put(MediaStore.Downloads.DISPLAY_NAME, fileName)
+                put(MediaStore.Downloads.MIME_TYPE, "application/json")
+                put(MediaStore.Downloads.RELATIVE_PATH, "${Environment.DIRECTORY_DOWNLOADS}/TimeTable")
+                put(MediaStore.Downloads.IS_PENDING, 1)
+            }
+            val resolver = context.contentResolver
+            val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                ?: error("无法创建备份文件")
+            try {
+                resolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(json) }
+                    ?: error("无法写入备份文件")
+                values.clear()
+                values.put(MediaStore.Downloads.IS_PENDING, 0)
+                resolver.update(uri, values, null, null)
+            } catch (t: Throwable) {
+                resolver.delete(uri, null, null)
+                throw t
+            }
+            "澶囦唤鎴愬姛锛欴ownload/TimeTable/$fileName"
+        } else {
+            val dir = java.io.File(
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                "TimeTable"
+            )
+            if (!dir.exists()) dir.mkdirs()
+            java.io.File(dir, fileName).writeText(json)
+            "澶囦唤鎴愬姛锛欴ownload/TimeTable/$fileName"
+        }
+    }
+    private fun parseBackupJson(json: String): ImportedBackup {
+        val trimmed = json.trim()
+        if (trimmed.startsWith("[")) {
+            return ImportedBackup(tasks = jsonToTasks(JSONArray(trimmed)))
+        }
+        val root = JSONObject(trimmed)
+        return ImportedBackup(
+            activeScheduleId = root.optInt("activeScheduleId", 0),
+            tasks = jsonToTasks(root.optJSONArray("tasks") ?: JSONArray()),
+            tags = jsonToTags(root.optJSONArray("tags") ?: JSONArray()),
+            taskTags = jsonToTaskTags(root.optJSONArray("taskTags") ?: JSONArray()),
+            schedules = jsonToCourseSchedules(root.optJSONArray("courseSchedules") ?: JSONArray()),
+            lessons = jsonToCourseLessons(root.optJSONArray("courseLessons") ?: JSONArray()),
+            timetables = jsonToTimetables(root.optJSONArray("timetables") ?: JSONArray()),
+            periods = jsonToTimetablePeriods(root.optJSONArray("timetablePeriods") ?: JSONArray())
+        )
+    }
+    private fun jsonToTasks(array: JSONArray): List<Task> {
         return buildList(array.length()) {
             for (index in 0 until array.length()) {
                 val obj = array.getJSONObject(index)
-                add(Task(
-                    id = obj.optInt("id"),
-                    title = obj.optString("title"),
-                    description = obj.optString("description"),
-                    startTime = obj.optLongOrNull("startTime"),
-                    endTime = obj.optLongOrNull("endTime"),
-                    dueDate = obj.optLongOrNull("dueDate"),
-                    repeatType = obj.optString("repeatType").ifEmpty { "none" },
-                    repeatDays = obj.optString("repeatDays"),
-                    reminderTime = obj.optLongOrNull("reminderTime"),
-                    isCompleted = obj.optBoolean("isCompleted"),
-                    sortOrder = obj.optInt("sortOrder"),
-                    createdAt = obj.optLongOrNull("createdAt") ?: System.currentTimeMillis()
-                ))
+                add(
+                    Task(
+                        id = obj.optInt("id"),
+                        title = obj.optString("title"),
+                        description = obj.optString("description"),
+                        startTime = obj.optLongOrNull("startTime"),
+                        endTime = obj.optLongOrNull("endTime"),
+                        dueDate = obj.optLongOrNull("dueDate"),
+                        repeatType = obj.optString("repeatType").ifEmpty { "none" },
+                        repeatDays = obj.optString("repeatDays"),
+                        reminderTime = obj.optLongOrNull("reminderTime"),
+                        isCompleted = obj.optBoolean("isCompleted"),
+                        isStarred = obj.optBoolean("isStarred"),
+                        parentTaskId = obj.optInt("parentTaskId", 0),
+                        sortOrder = obj.optInt("sortOrder"),
+                        createdAt = obj.optLongOrNull("createdAt") ?: System.currentTimeMillis()
+                    )
+                )
             }
         }
     }
-
-    private fun observeOnce(source: LiveData<List<Task>>, onChanged: (List<Task>) -> Unit) {
-        val observer = object : Observer<List<Task>> {
-            override fun onChanged(value: List<Task>) {
-                source.removeObserver(this)
-                onChanged(value)
+    private fun jsonToTags(array: JSONArray): List<Tag> {
+        return buildList(array.length()) {
+            for (index in 0 until array.length()) {
+                val obj = array.getJSONObject(index)
+                add(Tag(id = obj.optInt("id"), name = obj.optString("name"), color = obj.optInt("color", 0)))
             }
         }
-        source.observe(viewLifecycleOwner, observer)
     }
-
+    private fun jsonToTaskTags(array: JSONArray): List<TaskTag> {
+        return buildList(array.length()) {
+            for (index in 0 until array.length()) {
+                val obj = array.getJSONObject(index)
+                add(TaskTag(taskId = obj.optInt("taskId"), tagId = obj.optInt("tagId")))
+            }
+        }
+    }
+    private fun jsonToCourseSchedules(array: JSONArray): List<CourseSchedule> {
+        return buildList(array.length()) {
+            for (index in 0 until array.length()) {
+                val obj = array.getJSONObject(index)
+                add(
+                    CourseSchedule(
+                        id = obj.optInt("id"),
+                        name = obj.optString("name"),
+                        semesterStart = obj.optLong("semesterStart"),
+                        totalWeeks = obj.optInt("totalWeeks", 20),
+                        timetableId = obj.optInt("timetableId", 0),
+                        createdAt = obj.optLongOrNull("createdAt") ?: System.currentTimeMillis()
+                    )
+                )
+            }
+        }
+    }
+    private fun jsonToCourseLessons(array: JSONArray): List<CourseLesson> {
+        return buildList(array.length()) {
+            for (index in 0 until array.length()) {
+                val obj = array.getJSONObject(index)
+                add(
+                    CourseLesson(
+                        id = obj.optInt("id"),
+                        scheduleId = obj.optInt("scheduleId"),
+                        courseName = obj.optString("courseName"),
+                        classroom = obj.optString("classroom"),
+                        teacher = obj.optString("teacher"),
+                        className = obj.optString("className"),
+                        dayOfWeek = obj.optInt("dayOfWeek"),
+                        slotIndex = obj.optInt("slotIndex"),
+                        color = obj.optInt("color", 0),
+                        weekBitmap = obj.optLongDefault("weekBitmap", -1L)
+                    )
+                )
+            }
+        }
+    }
+    private fun jsonToTimetables(array: JSONArray): List<Timetable> {
+        return buildList(array.length()) {
+            for (index in 0 until array.length()) {
+                val obj = array.getJSONObject(index)
+                add(
+                    Timetable(
+                        id = obj.optInt("id"),
+                        name = obj.optString("name"),
+                        sameDuration = obj.optBoolean("sameDuration", true),
+                        durationMinutes = obj.optInt("durationMinutes", 45),
+                        createdAt = obj.optLongOrNull("createdAt") ?: System.currentTimeMillis()
+                    )
+                )
+            }
+        }
+    }
+    private fun jsonToTimetablePeriods(array: JSONArray): List<TimetablePeriod> {
+        return buildList(array.length()) {
+            for (index in 0 until array.length()) {
+                val obj = array.getJSONObject(index)
+                add(
+                    TimetablePeriod(
+                        id = obj.optInt("id"),
+                        timetableId = obj.optInt("timetableId"),
+                        periodNumber = obj.optInt("periodNumber"),
+                        startHour = obj.optInt("startHour"),
+                        startMinute = obj.optInt("startMinute"),
+                        durationMinutes = obj.optInt("durationMinutes")
+                    )
+                )
+            }
+        }
+    }
     private fun JSONObject.optLongOrNull(key: String): Long? {
         return if (isNull(key)) null else optLong(key)
     }
+    private fun JSONObject.optLongDefault(key: String, fallback: Long): Long {
+        return if (has(key) && !isNull(key)) getLong(key) else fallback
+    }
+    private fun Task.toJson() = JSONObject().apply {
+        put("id", id)
+        put("title", title)
+        put("description", description)
+        put("startTime", startTime)
+        put("endTime", endTime)
+        put("dueDate", dueDate)
+        put("repeatType", repeatType)
+        put("repeatDays", repeatDays)
+        put("reminderTime", reminderTime)
+        put("isCompleted", isCompleted)
+        put("isStarred", isStarred)
+        put("parentTaskId", parentTaskId)
+        put("sortOrder", sortOrder)
+        put("createdAt", createdAt)
+    }
+    private fun Tag.toJson() = JSONObject().apply {
+        put("id", id)
+        put("name", name)
+        put("color", color)
+    }
+    private fun TaskTag.toJson() = JSONObject().apply {
+        put("taskId", taskId)
+        put("tagId", tagId)
+    }
+    private fun CourseSchedule.toJson() = JSONObject().apply {
+        put("id", id)
+        put("name", name)
+        put("semesterStart", semesterStart)
+        put("totalWeeks", totalWeeks)
+        put("timetableId", timetableId)
+        put("createdAt", createdAt)
+    }
+    private fun CourseLesson.toJson() = JSONObject().apply {
+        put("id", id)
+        put("scheduleId", scheduleId)
+        put("courseName", courseName)
+        put("classroom", classroom)
+        put("teacher", teacher)
+        put("className", className)
+        put("dayOfWeek", dayOfWeek)
+        put("slotIndex", slotIndex)
+        put("color", color)
+        put("weekBitmap", weekBitmap)
+    }
+    private fun Timetable.toJson() = JSONObject().apply {
+        put("id", id)
+        put("name", name)
+        put("sameDuration", sameDuration)
+        put("durationMinutes", durationMinutes)
+        put("createdAt", createdAt)
+    }
+    private fun TimetablePeriod.toJson() = JSONObject().apply {
+        put("id", id)
+        put("timetableId", timetableId)
+        put("periodNumber", periodNumber)
+        put("startHour", startHour)
+        put("startMinute", startMinute)
+        put("durationMinutes", durationMinutes)
+    }
+    private data class ImportedBackup(
+        val activeScheduleId: Int = 0,
+        val tasks: List<Task> = emptyList(),
+        val tags: List<Tag> = emptyList(),
+        val taskTags: List<TaskTag> = emptyList(),
+        val schedules: List<CourseSchedule> = emptyList(),
+        val lessons: List<CourseLesson> = emptyList(),
+        val timetables: List<Timetable> = emptyList(),
+        val periods: List<TimetablePeriod> = emptyList()
+    )
 }

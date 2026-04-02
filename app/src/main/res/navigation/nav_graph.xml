@@ -15,6 +15,26 @@
             app:exitAnim="@anim/fade_stay"
             app:popEnterAnim="@anim/fade_stay"
             app:popExitAnim="@anim/slide_down" />
+        <action
+            android:id="@+id/action_taskList_to_history"
+            app:destination="@id/historyFragment"
+            app:enterAnim="@android:anim/fade_in"
+            app:exitAnim="@android:anim/fade_out"
+            app:popEnterAnim="@android:anim/fade_in"
+            app:popExitAnim="@android:anim/fade_out" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/historyFragment"
+        android:name="com.lewis.timetable.HistoryFragment"
+        android:label="历史待办">
+        <action
+            android:id="@+id/action_history_to_addTask"
+            app:destination="@id/addTaskFragment"
+            app:enterAnim="@anim/slide_up"
+            app:exitAnim="@anim/fade_stay"
+            app:popEnterAnim="@anim/fade_stay"
+            app:popExitAnim="@anim/slide_down" />
     </fragment>
 
     <fragment

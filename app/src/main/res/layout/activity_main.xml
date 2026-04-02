@@ -3,7 +3,8 @@
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="?attr/colorSurface">
 
     <androidx.fragment.app.FragmentContainerView
         android:id="@+id/nav_host_fragment"
@@ -42,7 +43,7 @@
                 android:clickable="true"
                 android:focusable="true"
                 android:gravity="center"
-                android:text="待办"
+                android:text="@string/nav_tab_tasks"
                 android:textSize="15sp"
                 android:textStyle="bold" />
 
@@ -55,7 +56,7 @@
                 android:clickable="true"
                 android:focusable="true"
                 android:gravity="center"
-                android:text="日程"
+                android:text="@string/nav_tab_schedule"
                 android:textSize="15sp" />
 
             <TextView
@@ -67,7 +68,7 @@
                 android:clickable="true"
                 android:focusable="true"
                 android:gravity="center"
-                android:text="设置"
+                android:text="@string/nav_tab_settings"
                 android:textSize="15sp" />
         </LinearLayout>
 
@@ -77,4 +78,16 @@
             android:layout_height="0dp"
             android:background="?attr/colorSurface" />
     </LinearLayout>
+
+    <FrameLayout
+        android:id="@+id/startup_cover"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="@android:color/white"
+        android:clickable="true"
+        android:focusable="true"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
 </androidx.constraintlayout.widget.ConstraintLayout>

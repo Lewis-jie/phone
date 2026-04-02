@@ -8,24 +8,26 @@ import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.appcompat.widget.SwitchCompat
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
-import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
+import androidx.core.graphics.toColorInt
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 class TimetableEditorFragment : Fragment() {
 
     private val vm: CourseViewModel by viewModels()
 
     private lateinit var etName: EditText
-    private lateinit var switchSameDuration: Switch
+    private lateinit var switchSameDuration: SwitchCompat
     private lateinit var layoutDuration: View
     private lateinit var etDurationMinutes: EditText
     private lateinit var periodsContainer: LinearLayout
@@ -33,15 +35,16 @@ class TimetableEditorFragment : Fragment() {
 
     private data class PeriodRow(
         val number: Int,
-        val startHour: EditText,
-        val startMinute: EditText,
-        val endHour: EditText,
-        val endMinute: EditText,
+        val startView: TextView,
+        val endView: TextView,
+        var startMinutes: Int,
+        var endMinutes: Int,
         val view: View
     )
 
     private val rows = mutableListOf<PeriodRow>()
     private var timetableId = -1
+    private var bindScheduleId = -1
     private var sameDuration = true
 
     override fun onCreateView(
@@ -54,6 +57,7 @@ class TimetableEditorFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
 
         timetableId = arguments?.getInt("timetableId", -1) ?: -1
+        bindScheduleId = arguments?.getInt("bindScheduleId", -1) ?: -1
         etName = view.findViewById(R.id.et_timetable_name)
         switchSameDuration = view.findViewById(R.id.switch_same_duration)
         layoutDuration = view.findViewById(R.id.layout_duration)
@@ -85,9 +89,7 @@ class TimetableEditorFragment : Fragment() {
 
         view.findViewById<View>(R.id.btn_add_period).setOnClickListener {
             val previous = rows.lastOrNull()
-            val previousEndHour = previous?.endHour?.text?.toString()?.toIntOrNull() ?: 8
-            val previousEndMinute = previous?.endMinute?.text?.toString()?.toIntOrNull() ?: 45
-            val nextStart = previousEndHour * 60 + previousEndMinute + 10
+            val nextStart = (previous?.endMinutes ?: (8 * 60 + 45)) + 10
             addRow(rows.size + 1, nextStart / 60, nextStart % 60)
         }
 
@@ -100,7 +102,9 @@ class TimetableEditorFragment : Fragment() {
                         etName.setText(it.name)
                         sameDuration = it.sameDuration
                         switchSameDuration.isChecked = it.sameDuration
-                        etDurationMinutes.setText(it.durationMinutes.toString())
+                        etDurationMinutes.setText(
+                            String.format(Locale.getDefault(), "%d", it.durationMinutes)
+                        )
                         layoutDuration.visibility = if (it.sameDuration) View.VISIBLE else View.GONE
                     }
                     periods.forEach { period ->
@@ -125,25 +129,22 @@ class TimetableEditorFragment : Fragment() {
             color
         }
 
-        fun timeField(value: Int, enabled: Boolean): EditText = EditText(requireContext()).apply {
-            inputType = InputType.TYPE_CLASS_NUMBER
-            setText(value.toString().padStart(2, '0'))
+        fun timeBlock(minutes: Int, enabled: Boolean): TextView = TextView(requireContext()).apply {
+            text = formatTime(minutes)
             gravity = Gravity.CENTER
-            isEnabled = enabled
-            setTextColor(if (enabled) Color.BLACK else Color.GRAY)
-            layoutParams = LinearLayout.LayoutParams((44 * density).toInt(), (40 * density).toInt())
+            textSize = 14f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(if (enabled) "#1F2937".toColorInt() else "#9AA5B1".toColorInt())
+            minHeight = (44 * density).toInt()
+            layoutParams = LinearLayout.LayoutParams((96 * density).toInt(), (44 * density).toInt())
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
-                cornerRadius = 8 * density
-                setColor(containerColor)
+                cornerRadius = 12 * density
+                setColor(if (enabled) Color.WHITE else "#EFF3F7".toColorInt())
+                setStroke((1 * density).toInt(), "#D8E0EA".toColorInt())
             }
-        }
-
-        fun colonView(): TextView = TextView(requireContext()).apply {
-            text = ":"
-            textSize = 16f
-            gravity = Gravity.CENTER
-            setPadding((3 * density).toInt(), 0, (3 * density).toInt(), 0)
+            isClickable = enabled
+            isFocusable = enabled
         }
 
         val duration = etDurationMinutes.text.toString().toIntOrNull() ?: 45
@@ -154,6 +155,7 @@ class TimetableEditorFragment : Fragment() {
         val rowView = LinearLayout(requireContext()).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
+            weightSum = 4f
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
@@ -161,54 +163,65 @@ class TimetableEditorFragment : Fragment() {
         }
 
         rowView.addView(TextView(requireContext()).apply {
-            text = "第${number}节"
+            text = getString(R.string.format_period_number, number)
             textSize = 13f
             setTextColor(Color.BLACK)
             layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
+                0,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { marginEnd = (6 * density).toInt() }
+            ).apply { weight = 1f }
+            gravity = Gravity.CENTER
         })
 
-        val etStartHour = timeField(startHour, true)
-        val etStartMinute = timeField(startMinute, true)
-        val etEndHour = timeField(actualEndHour, !sameDuration)
-        val etEndMinute = timeField(actualEndMinute, !sameDuration)
+        val startTotalMinutes = startHour * 60 + startMinute
+        val endTotalMinutes = actualEndHour * 60 + actualEndMinute
+        val tvStart = timeBlock(startTotalMinutes, true)
+        val tvEnd = timeBlock(endTotalMinutes, !sameDuration)
 
-        val watcher = object : android.text.TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
-            override fun afterTextChanged(s: android.text.Editable?) {
-                if (!sameDuration) return
-                val sh = etStartHour.text.toString().toIntOrNull() ?: startHour
-                val sm = etStartMinute.text.toString().toIntOrNull() ?: startMinute
-                val d = etDurationMinutes.text.toString().toIntOrNull() ?: 45
-                val end = sh * 60 + sm + d
-                etEndHour.setText((end / 60).toString().padStart(2, '0'))
-                etEndMinute.setText((end % 60).toString().padStart(2, '0'))
-            }
+        rowView.addView(tvStart, LinearLayout.LayoutParams(0, (44 * density).toInt()).apply { weight = 1f })
+        rowView.addView(tvEnd, LinearLayout.LayoutParams(0, (44 * density).toInt()).apply { weight = 1f })
+
+        val periodRow = PeriodRow(number, tvStart, tvEnd, startTotalMinutes, endTotalMinutes, rowView)
+        tvStart.setOnClickListener {
+            TimePickerBottomDialog(
+                requireContext(),
+                periodRow.startMinutes / 60,
+                periodRow.startMinutes % 60,
+                getString(R.string.time_picker_select_start)
+            ) { h, m ->
+                periodRow.startMinutes = h * 60 + m
+                periodRow.startView.text = formatTime(periodRow.startMinutes)
+                if (sameDuration) {
+                    val durationMinutes = etDurationMinutes.text.toString().toIntOrNull()?.coerceAtLeast(1) ?: 45
+                    periodRow.endMinutes = periodRow.startMinutes + durationMinutes
+                    periodRow.endView.text = formatTime(periodRow.endMinutes)
+                } else if (periodRow.endMinutes < periodRow.startMinutes) {
+                    periodRow.endMinutes = periodRow.startMinutes
+                    periodRow.endView.text = formatTime(periodRow.endMinutes)
+                }
+            }.show()
         }
-        etStartHour.addTextChangedListener(watcher)
-        etStartMinute.addTextChangedListener(watcher)
+        tvEnd.setOnClickListener {
+            if (sameDuration) return@setOnClickListener
+            TimePickerBottomDialog(
+                requireContext(),
+                periodRow.endMinutes / 60,
+                periodRow.endMinutes % 60,
+                getString(R.string.time_picker_select_end)
+            ) { h, m ->
+                val chosen = h * 60 + m
+                periodRow.endMinutes = maxOf(periodRow.startMinutes, chosen)
+                periodRow.endView.text = formatTime(periodRow.endMinutes)
+            }.show()
+        }
 
-        rowView.addView(etStartHour)
-        rowView.addView(colonView())
-        rowView.addView(etStartMinute)
         rowView.addView(TextView(requireContext()).apply {
-            text = " - "
-            textSize = 13f
-            setTextColor(Color.GRAY)
-        })
-        rowView.addView(etEndHour)
-        rowView.addView(colonView())
-        rowView.addView(etEndMinute)
-
-        if (number > 1) {
-            rowView.addView(TextView(requireContext()).apply {
-                text = "删除"
-                textSize = 12f
-                setTextColor(Color.parseColor("#999999"))
-                setPadding((10 * density).toInt(), 0, 0, 0)
+            text = if (number > 1) getString(R.string.timetable_delete_row) else ""
+            textSize = 12f
+            setTextColor("#999999".toColorInt())
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT).apply { weight = 1f }
+            if (number > 1) {
                 setOnClickListener {
                     val index = rows.indexOfFirst { it.number == number }
                     if (index >= 0) {
@@ -216,26 +229,28 @@ class TimetableEditorFragment : Fragment() {
                         periodsContainer.removeView(rowView)
                     }
                 }
-            })
-        }
+            }
+        })
 
         periodsContainer.addView(rowView)
-        rows.add(PeriodRow(number, etStartHour, etStartMinute, etEndHour, etEndMinute, rowView))
+        rows.add(periodRow)
     }
 
     private fun refreshEndTimes() {
         val duration = etDurationMinutes.text.toString().toIntOrNull() ?: 45
         rows.forEach { row ->
-            row.endHour.isEnabled = !sameDuration
-            row.endMinute.isEnabled = !sameDuration
-            row.endHour.setTextColor(if (sameDuration) Color.GRAY else Color.BLACK)
-            row.endMinute.setTextColor(if (sameDuration) Color.GRAY else Color.BLACK)
+            row.endView.isEnabled = !sameDuration
+            row.endView.isClickable = !sameDuration
+            row.endView.setTextColor(if (sameDuration) "#9AA5B1".toColorInt() else "#1F2937".toColorInt())
+            row.endView.background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = 12 * resources.displayMetrics.density
+                setColor(if (sameDuration) "#EFF3F7".toColorInt() else Color.WHITE)
+                setStroke(resources.displayMetrics.density.toInt().coerceAtLeast(1), "#D8E0EA".toColorInt())
+            }
             if (sameDuration) {
-                val startHour = row.startHour.text.toString().toIntOrNull() ?: 8
-                val startMinute = row.startMinute.text.toString().toIntOrNull() ?: 0
-                val end = startHour * 60 + startMinute + duration
-                row.endHour.setText((end / 60).toString().padStart(2, '0'))
-                row.endMinute.setText((end % 60).toString().padStart(2, '0'))
+                row.endMinutes = row.startMinutes + duration
+                row.endView.text = formatTime(row.endMinutes)
             }
         }
     }
@@ -249,12 +264,9 @@ class TimetableEditorFragment : Fragment() {
 
         val durationMinutes = etDurationMinutes.text.toString().toIntOrNull()?.coerceAtLeast(1) ?: 45
         val periods = rows.mapIndexed { index, row ->
-            val sh = row.startHour.text.toString().toIntOrNull()?.coerceIn(0, 23) ?: 8
-            val sm = row.startMinute.text.toString().toIntOrNull()?.coerceIn(0, 59) ?: 0
-            val defaultEnd = sh * 60 + sm + durationMinutes
-            val eh = row.endHour.text.toString().toIntOrNull()?.coerceIn(0, 23) ?: defaultEnd / 60
-            val em = row.endMinute.text.toString().toIntOrNull()?.coerceIn(0, 59) ?: defaultEnd % 60
-            val computedDuration = (eh * 60 + em) - (sh * 60 + sm)
+            val sh = (row.startMinutes / 60).coerceIn(0, 23)
+            val sm = (row.startMinutes % 60).coerceIn(0, 59)
+            val computedDuration = row.endMinutes - row.startMinutes
             TimetablePeriod(
                 timetableId = timetableId,
                 periodNumber = index + 1,
@@ -264,11 +276,16 @@ class TimetableEditorFragment : Fragment() {
             )
         }
 
-        vm.saveTimetable(timetableId, name, sameDuration, durationMinutes, periods) {
+        vm.saveTimetable(timetableId, bindScheduleId, name, sameDuration, durationMinutes, periods) {
             activity?.runOnUiThread {
-                Toast.makeText(requireContext(), "已保存", Toast.LENGTH_SHORT).show()
+                Toast.makeText(requireContext(), getString(R.string.common_saved), Toast.LENGTH_SHORT).show()
                 findNavController().navigateUp()
             }
         }
+    }
+
+    private fun formatTime(minutes: Int): String {
+        val normalized = minutes.coerceAtLeast(0)
+        return String.format(Locale.getDefault(), "%02d:%02d", normalized / 60, normalized % 60)
     }
 }
