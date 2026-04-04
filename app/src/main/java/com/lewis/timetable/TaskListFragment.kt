@@ -16,6 +16,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.chip.Chip
 import com.google.android.material.chip.ChipGroup
 import com.google.android.material.floatingactionbutton.FloatingActionButton
+import com.google.android.material.snackbar.Snackbar
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -35,6 +36,7 @@ class TaskListFragment : Fragment() {
     private var allChip: Chip? = null
     private var starChip: Chip? = null
     private val tagChipMap = linkedMapOf<String, Chip>()
+    private var completionSnackbar: Snackbar? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -61,14 +63,7 @@ class TaskListFragment : Fragment() {
             },
             onTaskLongClick = { },
             onTaskChecked = { task, isChecked ->
-                if (isChecked && task.repeatType != "none") {
-                    viewLifecycleOwner.lifecycleScope.launch {
-                        val tags = viewModel.getTagsForTask(task.id).map { it.name }
-                        viewModel.completeAndGenerateNext(task, tags)
-                    }
-                } else {
-                    viewModel.update(task.copy(isCompleted = isChecked))
-                }
+                handleTaskCheckedChange(view, fab, task, isChecked)
             },
             onTaskDelete = { task ->
                 val dialog = if (task.repeatType != "none" || task.parentTaskId != 0) {
@@ -262,6 +257,70 @@ class TaskListFragment : Fragment() {
         fab.backgroundTintList = android.content.res.ColorStateList.valueOf(primaryColor)
         fab.setOnClickListener { findNavController().navigate(R.id.action_taskList_to_addTask) }
         btnHistory.setOnClickListener { findNavController().navigate(R.id.action_taskList_to_history) }
+    }
+
+    private fun handleTaskCheckedChange(anchorView: View, fab: View, task: Task, isChecked: Boolean) {
+        if (!isChecked) {
+            completionSnackbar?.dismiss()
+            viewModel.update(task.copy(isCompleted = false))
+            return
+        }
+
+        if (task.repeatType != "none") {
+            viewLifecycleOwner.lifecycleScope.launch {
+                val tags = viewModel.getTagsForTask(task.id).map { it.name }
+                viewModel.completeAndGenerateNext(task, tags)
+                showCompletionFeedback(anchorView, fab, task, isRepeat = true)
+            }
+        } else {
+            viewModel.update(task.copy(isCompleted = true))
+            showCompletionFeedback(anchorView, fab, task, isRepeat = false)
+        }
+    }
+
+    private fun showCompletionFeedback(anchorView: View, fab: View, task: Task, isRepeat: Boolean) {
+        completionSnackbar?.dismiss()
+        val message = buildCompletionFeedbackMessage(task, isRepeat)
+        completionSnackbar = Snackbar.make(anchorView, message, Snackbar.LENGTH_LONG)
+            .setAnchorView(fab)
+            .setAction(getString(R.string.common_undo)) {
+                if (isRepeat) {
+                    viewModel.undoComplete(task)
+                } else {
+                    viewModel.update(task.copy(isCompleted = false))
+                }
+            }
+        completionSnackbar?.show()
+    }
+
+    private fun buildCompletionFeedbackMessage(task: Task, isRepeat: Boolean): String {
+        if (isRepeat) {
+            return getString(R.string.task_completed_repeat_feedback, task.title)
+        }
+
+        val taskStart = task.startTime ?: return getString(R.string.task_completed_feedback, task.title)
+        val todayStart = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+        val todayEnd = todayStart + 86_399_999L
+        val taskIsToday = taskStart in todayStart..todayEnd
+        if (!taskIsToday) {
+            return getString(R.string.task_completed_feedback, task.title)
+        }
+
+        val hasRemainingToday = latestTasks.any { candidate ->
+            candidate.id != task.id &&
+                !candidate.isCompleted &&
+                candidate.startTime?.let { it in todayStart..todayEnd } == true
+        }
+        return if (hasRemainingToday) {
+            getString(R.string.task_completed_feedback, task.title)
+        } else {
+            getString(R.string.task_completed_feedback_cleared, task.title)
+        }
     }
 
     private fun syncVisibleTaskDecorations() {

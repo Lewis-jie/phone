@@ -48,6 +48,13 @@
 
 ## 最近更新
 
+### 2026-04-04
+
+- 待办完成后新增 `Snackbar` 反馈，支持直接撤销
+- 重复任务完成后会自动生成下一次，并支持撤销回收刚生成的实例
+- 日 / 周 / 月日程页新增“今天”快捷返回和上下文提示文案
+- 新增项目说明文档，补充文件路径、职责和关键架构说明
+
 ### 2026-04-02
 
 - 修复周视图、月视图和历史待办页的多处崩溃与渲染问题
@@ -117,6 +124,11 @@ MyApp/
 ├─ README.md
 └─ settings.gradle.kts
 ```
+
+## 项目文档
+
+- [README.md](D:/Users/Lewis/Desktop/AndroidStudioProjects/MyApp/README.md)：项目概览、功能和运行方式
+- [docs/project-guide.md](D:/Users/Lewis/Desktop/AndroidStudioProjects/MyApp/docs/project-guide.md)：完整文件路径说明、当前待提交改动和关键架构决定
 
 ## 核心页面
 

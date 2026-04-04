@@ -18,6 +18,8 @@
     <string name="common_zero">0</string>
     <string name="common_zero_percent">0%%</string>
     <string name="common_edit">编辑</string>
+    <string name="common_today">今天</string>
+    <string name="common_undo">撤销</string>
 
     <string name="percent_value">%1$d%%</string>
     <string name="format_range">%1$s ~ %2$s</string>
@@ -127,4 +129,17 @@
     <string name="schedule_day_empty">当天暂无安排</string>
     <string name="schedule_week_loading">正在加载本周日程…</string>
     <string name="schedule_week_empty">本周暂无课程和待办</string>
+    <string name="schedule_day_context_idle">当天共 %1$d 项安排</string>
+    <string name="schedule_day_context_now">现在 %1$s · %2$s</string>
+    <string name="schedule_day_context_next">下一项 %1$s</string>
+    <string name="schedule_day_context_clear">今天暂无后续安排</string>
+    <string name="schedule_week_context_current">今天还剩 %1$d 项 · %2$s</string>
+    <string name="schedule_week_context_idle">本周共 %1$d 项安排</string>
+    <string name="schedule_week_context_next">下一项 %1$s</string>
+    <string name="schedule_week_context_clear">今天暂无后续安排</string>
+    <string name="schedule_month_context_current">今天有 %1$d 项安排</string>
+    <string name="schedule_month_context_idle">本月还有 %1$d 项未完成</string>
+    <string name="task_completed_feedback">已完成“%1$s”</string>
+    <string name="task_completed_feedback_cleared">已完成“%1$s”，今天已清空</string>
+    <string name="task_completed_repeat_feedback">已完成“%1$s”，已生成下一次</string>
 </resources>

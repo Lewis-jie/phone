@@ -321,6 +321,58 @@ class ScheduleFragment : Fragment() {
         view.findViewById<TextView>(nextButtonId).setTextColor(palette.primary)
     }
 
+    private fun styleTodayButton(button: TextView, isCurrent: Boolean) {
+        val palette = getSchedulePalette()
+        button.setTextColor(if (isCurrent) palette.onSurfaceVariant else palette.primary)
+        button.alpha = if (isCurrent) 0.55f else 1f
+        button.isEnabled = !isCurrent
+    }
+
+    private fun updateContextLabel(label: TextView, message: String?) {
+        val palette = getSchedulePalette()
+        if (message.isNullOrBlank()) {
+            label.visibility = View.GONE
+            return
+        }
+        label.visibility = View.VISIBLE
+        label.text = message
+        label.setTextColor(palette.onSurfaceVariant)
+    }
+
+    private fun isSameDay(first: Calendar, second: Calendar): Boolean {
+        return first.get(Calendar.YEAR) == second.get(Calendar.YEAR) &&
+            first.get(Calendar.DAY_OF_YEAR) == second.get(Calendar.DAY_OF_YEAR)
+    }
+
+    private fun isSameDay(firstMs: Long, secondMs: Long): Boolean {
+        val first = Calendar.getInstance().apply { timeInMillis = firstMs }
+        val second = Calendar.getInstance().apply { timeInMillis = secondMs }
+        return isSameDay(first, second)
+    }
+
+    private fun isCurrentWeek(monday: Calendar): Boolean {
+        val todayMonday = CourseFragment.mondayOf(Calendar.getInstance())
+        return isSameDay(monday, todayMonday)
+    }
+
+    private fun resetDayToToday() {
+        dayCalendar = Calendar.getInstance()
+    }
+
+    private fun resetWeekToToday() {
+        weekCalendar = Calendar.getInstance()
+    }
+
+    private fun resetMonthToToday() {
+        val today = Calendar.getInstance()
+        monthCalendar = today.clone() as Calendar
+        if (monthCompressed) {
+            selectedDayCalendar = today.clone() as Calendar
+        } else {
+            selectedDayCalendar = null
+        }
+    }
+
     private fun attachSwipe(v: View) {
         v.setOnTouchListener(swipeTouchListener)
         if (v is ViewGroup) for (i in 0 until v.childCount) attachSwipe(v.getChildAt(i))
@@ -511,6 +563,10 @@ class ScheduleFragment : Fragment() {
                 dayCalendar.add(Calendar.DAY_OF_MONTH, 1)
             }
         }
+        v.findViewById<TextView>(R.id.btn_today_day).setOnClickListener {
+            resetDayToToday()
+            renderCurrentTab()
+        }
         return v
     }
 
@@ -519,15 +575,22 @@ class ScheduleFragment : Fragment() {
         val palette = getSchedulePalette()
         applySchedulePageChrome(view, R.id.tv_day_title, R.id.btn_prev_day, R.id.btn_next_day)
         view.findViewById<ScrollView>(R.id.day_scroll_view).setBackgroundColor(palette.surface)
+        val isToday = isSameDay(cal, Calendar.getInstance())
+        styleTodayButton(view.findViewById<TextView>(R.id.btn_today_day), isToday)
         view.findViewById<TextView>(R.id.tv_day_title).text =
             SimpleDateFormat("yyyy年MM月dd日 EEEE", Locale.CHINESE).format(cal.time)
 
         val (start, end) = dayRange(cal)
         val dayTasks  = cachedAllTasks.filter { it.startTime?.let { t -> t in start..end } ?: false }
         val expanded  = expandRepeatTasks(cachedRepeatTasks, start, end, dayTasks)
+        val visibleTasks = (dayTasks + expanded).sortedBy { it.startTime }
+        updateContextLabel(
+            view.findViewById<TextView>(R.id.tv_day_context),
+            buildDayContextMessage(cal, visibleTasks)
+        )
         buildTimeline(
             view.findViewById(R.id.day_timeline),
-            (dayTasks + expanded).sortedBy { it.startTime }
+            visibleTasks
         )
     }
 
@@ -546,6 +609,10 @@ class ScheduleFragment : Fragment() {
             animateHorizontalPageChange(direction = 1) {
                 weekCalendar.add(Calendar.WEEK_OF_YEAR, 1)
             }
+        }
+        v.findViewById<TextView>(R.id.btn_today_week).setOnClickListener {
+            resetWeekToToday()
+            renderCurrentTab()
         }
         return v
     }
@@ -567,6 +634,11 @@ class ScheduleFragment : Fragment() {
             R.string.format_range,
             fmt.format(state.monday.time),
             fmt.format(state.sunday.time)
+        )
+        styleTodayButton(view.findViewById<TextView>(R.id.btn_today_week), isCurrentWeek(state.monday))
+        updateContextLabel(
+            view.findViewById<TextView>(R.id.tv_week_context),
+            buildWeekContextMessage(state)
         )
 
         val layoutSignature = buildWeekLayoutSignature(state)
@@ -752,6 +824,7 @@ class ScheduleFragment : Fragment() {
 
         for (i in 0..6) {
             val dayMs = state.mondayMs + i * DAY_MS
+            val isToday = isSameDay(dayMs, System.currentTimeMillis())
             header.addView(TextView(requireContext()).apply {
                 text = getString(
                     R.string.format_day_date,
@@ -759,9 +832,16 @@ class ScheduleFragment : Fragment() {
                     dayLabelFormat.format(Date(dayMs))
                 )
                 textSize = 11f
-                setTextColor(palette.onSurface)
+                setTextColor(if (isToday) palette.onPrimaryContainer else palette.onSurface)
                 gravity = android.view.Gravity.CENTER
                 layoutParams = LinearLayout.LayoutParams(state.dayWidths[i], LinearLayout.LayoutParams.MATCH_PARENT)
+                if (isToday) {
+                    background = android.graphics.drawable.GradientDrawable().apply {
+                        shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+                        cornerRadius = 12f * state.density
+                        setColor(palette.primaryContainer)
+                    }
+                }
             })
         }
 
@@ -1112,6 +1192,75 @@ class ScheduleFragment : Fragment() {
         }
     }
 
+    private fun buildDayContextMessage(dayCal: Calendar, tasks: List<Task>): String {
+        if (!isSameDay(dayCal, Calendar.getInstance())) {
+            return getString(R.string.schedule_day_context_idle, tasks.size)
+        }
+
+        val now = System.currentTimeMillis()
+        val timeLabel = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(now))
+        val nextTask = tasks
+            .asSequence()
+            .filter { !it.isCompleted }
+            .filter { (it.endTime ?: it.startTime ?: Long.MIN_VALUE) >= now }
+            .minByOrNull { it.startTime ?: Long.MAX_VALUE }
+
+        val nextLabel = nextTask?.let {
+            val taskTime = it.startTime?.let { start ->
+                SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(start))
+            }.orEmpty()
+            getString(
+                R.string.schedule_day_context_next,
+                listOf(taskTime, it.title).filter { part -> part.isNotBlank() }.joinToString(" ")
+            )
+        } ?: getString(R.string.schedule_day_context_clear)
+
+        return getString(R.string.schedule_day_context_now, timeLabel, nextLabel)
+    }
+
+    private fun buildWeekContextMessage(state: WeekFrameState): String {
+        if (!isCurrentWeek(state.monday)) {
+            return getString(R.string.schedule_week_context_idle, state.allTasks.count { !it.isCompleted })
+        }
+
+        val now = System.currentTimeMillis()
+        val todayStart = startOfDay(Calendar.getInstance()).timeInMillis
+        val todayEnd = endOfDay(Calendar.getInstance()).timeInMillis
+        val remainingToday = state.allTasks.count { task ->
+            !task.isCompleted && task.startTime?.let { it in todayStart..todayEnd && it >= now } == true
+        }
+        val nextTask = state.allTasks
+            .asSequence()
+            .filter { !it.isCompleted }
+            .filter { (it.endTime ?: it.startTime ?: Long.MIN_VALUE) >= now }
+            .minByOrNull { it.startTime ?: Long.MAX_VALUE }
+        val nextLabel = nextTask?.let {
+            val taskTime = it.startTime?.let { start ->
+                SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(start))
+            }.orEmpty()
+            getString(
+                R.string.schedule_week_context_next,
+                listOf(taskTime, it.title).filter { part -> part.isNotBlank() }.joinToString(" ")
+            )
+        } ?: getString(R.string.schedule_week_context_clear)
+        return getString(R.string.schedule_week_context_current, remainingToday, nextLabel)
+    }
+
+    private fun buildMonthContextMessage(displayCal: Calendar, tasks: List<Task>): String {
+        val today = Calendar.getInstance()
+        val isCurrentMonth = displayCal.get(Calendar.YEAR) == today.get(Calendar.YEAR) &&
+            displayCal.get(Calendar.MONTH) == today.get(Calendar.MONTH)
+        if (isCurrentMonth) {
+            val todayStart = startOfDay(today).timeInMillis
+            val todayEnd = endOfDay(today).timeInMillis
+            val todayCount = tasks.count { task ->
+                !task.isCompleted && task.startTime?.let { it in todayStart..todayEnd } == true
+            }
+            return getString(R.string.schedule_month_context_current, todayCount)
+        }
+        return getString(R.string.schedule_month_context_idle, tasks.count { !it.isCompleted })
+    }
+
     private fun inflateAndSetupMonthView(): View {
         val v = LayoutInflater.from(requireContext())
             .inflate(R.layout.view_month_schedule, contentFrame, false)
@@ -1125,6 +1274,10 @@ class ScheduleFragment : Fragment() {
             animateHorizontalPageChange(direction = 1) {
                 shiftMonthPage(1)
             }
+        }
+        v.findViewById<TextView>(R.id.btn_today_month).setOnClickListener {
+            resetMonthToToday()
+            renderCurrentTab()
         }
 
 
@@ -1175,6 +1328,11 @@ class ScheduleFragment : Fragment() {
         val displayCal = if (monthCompressed && selectedCal != null)
             selectedCal.clone() as Calendar
         else monthCalendar.clone() as Calendar
+        val today = Calendar.getInstance()
+        val isCurrentMonth = displayCal.get(Calendar.YEAR) == today.get(Calendar.YEAR) &&
+            displayCal.get(Calendar.MONTH) == today.get(Calendar.MONTH) &&
+            (!monthCompressed || isSameDay(displayCal, today))
+        styleTodayButton(view.findViewById<TextView>(R.id.btn_today_month), isCurrentMonth)
 
         val titleSrc = if (monthCompressed && selectedCal != null)
             selectedCal.time else monthCalendar.time
@@ -1199,8 +1357,6 @@ class ScheduleFragment : Fragment() {
         val first         = (displayCal.clone() as Calendar).apply { set(Calendar.DAY_OF_MONTH, 1) }
         val startDow      = ((first.get(Calendar.DAY_OF_WEEK) + 5) % 7)
         val daysInMonth   = displayCal.getActualMaximum(Calendar.DAY_OF_MONTH)
-        val today         = Calendar.getInstance()
-
         val monthStart = startOfDay(first).timeInMillis
         val monthEnd = endOfDay((displayCal.clone() as Calendar).apply {
             set(Calendar.DAY_OF_MONTH, daysInMonth)
@@ -1209,6 +1365,10 @@ class ScheduleFragment : Fragment() {
         val monthTasks = cachedAllTasks.filter { it.startTime?.let { t -> t in monthStart..monthEnd } ?: false }
         val expanded   = expandRepeatTasks(cachedRepeatTasks, monthStart, monthEnd, monthTasks)
         val allTasks   = monthTasks + expanded
+        updateContextLabel(
+            view.findViewById<TextView>(R.id.tv_month_context),
+            buildMonthContextMessage(displayCal, allTasks)
+        )
 
 
         val taskDays = allTasks.filter { !it.isCompleted }.mapNotNull { task ->

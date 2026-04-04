@@ -6,6 +6,7 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.switchMap
 import androidx.lifecycle.viewModelScope
+import java.util.Calendar
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
@@ -30,6 +31,7 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
     init {
         val db = AppDatabase.getDatabase(application)
         repository = TaskRepository(db.taskDao(), db.tagDao())
+        syncRepeatInstancesUpToToday()
     }
 
     fun ensureTagColorsIfNeeded() {
@@ -71,11 +73,17 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
     fun insertWithTags(task: Task, tagNames: List<String>) = viewModelScope.launch {
         val id = repository.insert(task)
         repository.setTagsForTask(id.toInt(), tagNames)
+        if (task.repeatType != "none") {
+            syncRepeatInstancesUpToToday()
+        }
     }
 
     fun updateWithTags(task: Task, tagNames: List<String>) = viewModelScope.launch {
         repository.update(task)
         repository.setTagsForTask(task.id, tagNames)
+        if (task.repeatType != "none") {
+            syncRepeatInstancesUpToToday()
+        }
     }
 
     fun update(task: Task) = viewModelScope.launch {
@@ -115,6 +123,29 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         )
         val newId = repository.insert(nextTask)
         repository.setTagsForTask(newId.toInt(), tagNames)
+    }
+
+    fun undoComplete(task: Task) = viewModelScope.launch {
+        if (task.repeatType == "none" && task.parentTaskId == 0) {
+            repository.update(task.copy(isCompleted = false))
+            return@launch
+        }
+
+        repository.update(task.copy(isCompleted = false))
+
+        val taskStart = task.startTime ?: Long.MIN_VALUE
+        val rootId = RepeatTaskHelper.getRootId(task)
+        val generatedNext = repository.getAllInstancesOfRepeat(rootId)
+            .asSequence()
+            .filter { it.id != task.id }
+            .filter { !it.isCompleted }
+            .filter { (it.startTime ?: Long.MAX_VALUE) > taskStart }
+            .sortedBy { it.startTime ?: Long.MAX_VALUE }
+            .firstOrNull()
+
+        if (generatedNext != null) {
+            repository.delete(generatedNext)
+        }
     }
 
     fun deleteThisInstance(task: Task) = viewModelScope.launch {
@@ -177,5 +208,18 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteAllRepeatInstances(task: Task) = viewModelScope.launch {
         val rootId = RepeatTaskHelper.getRootId(task)
         repository.deleteAllRepeatInstances(rootId)
+    }
+
+    fun syncRepeatInstancesUpToToday() = viewModelScope.launch(Dispatchers.IO) {
+        repository.backfillRepeatInstancesUpTo(endOfToday())
+    }
+
+    private fun endOfToday(): Long {
+        return Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 23)
+            set(Calendar.MINUTE, 59)
+            set(Calendar.SECOND, 59)
+            set(Calendar.MILLISECOND, 999)
+        }.timeInMillis
     }
 }

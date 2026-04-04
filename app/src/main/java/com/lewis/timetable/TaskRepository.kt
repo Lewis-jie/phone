@@ -1,11 +1,16 @@
 package com.lewis.timetable
 
 import androidx.lifecycle.LiveData
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 class TaskRepository(
     private val taskDao: TaskDao,
     private val tagDao: TagDao
 ) {
+    companion object {
+        private val repeatSyncMutex = Mutex()
+    }
 
     val allTasks: LiveData<List<Task>> by lazy(LazyThreadSafetyMode.NONE) { taskDao.getAllTasks() }
     val allUsedTags: LiveData<List<Tag>> by lazy(LazyThreadSafetyMode.NONE) { tagDao.getAllUsedTags() }
@@ -71,4 +76,63 @@ class TaskRepository(
     suspend fun getAllInstancesOfRepeat(rootId: Int) = taskDao.getAllInstancesOfRepeat(rootId)
     suspend fun getEarliestUncompletedInstance(rootId: Int) = taskDao.getEarliestUncompletedInstance(rootId)
     suspend fun deleteAllRepeatInstances(rootId: Int) = taskDao.deleteAllRepeatInstances(rootId)
+
+    suspend fun backfillRepeatInstancesUpTo(cutoffMs: Long) {
+        repeatSyncMutex.withLock {
+            val roots = taskDao.getRootRepeatTasksSync()
+                .filter { it.startTime != null }
+                .sortedBy { it.startTime }
+            val now = System.currentTimeMillis()
+
+            roots.forEach { root ->
+                val existingInstances = taskDao.getAllInstancesOfRepeat(root.id)
+                    .filter { it.startTime != null }
+                    .sortedBy { it.startTime }
+                if (existingInstances.isEmpty()) return@forEach
+
+                val existingByStart = existingInstances
+                    .associateBy { it.startTime!! }
+                    .toMutableMap()
+                var current = existingInstances.first()
+                var nextStartMs = RepeatTaskHelper.getNextStartTime(current)
+                var safeIter = 0
+
+                while (nextStartMs != null && nextStartMs <= cutoffMs && safeIter < 1000) {
+                    val existing = existingByStart[nextStartMs]
+                    current = if (existing != null) {
+                        existing
+                    } else {
+                        val inserted = createNextRepeatInstance(current, root.id, nextStartMs, now)
+                        existingByStart[nextStartMs] = inserted
+                        inserted
+                    }
+                    nextStartMs = RepeatTaskHelper.getNextStartTime(current)
+                    safeIter++
+                }
+            }
+        }
+    }
+
+    private suspend fun createNextRepeatInstance(
+        source: Task,
+        rootId: Int,
+        nextStartMs: Long,
+        createdAt: Long
+    ): Task {
+        val currentStartMs = source.startTime ?: nextStartMs
+        val duration = (source.endTime ?: (currentStartMs + 3_600_000L)) - currentStartMs
+        val nextTask = source.copy(
+            id = 0,
+            startTime = nextStartMs,
+            endTime = nextStartMs + duration,
+            reminderTime = source.reminderTime?.let { nextStartMs - (currentStartMs - it) },
+            isCompleted = false,
+            parentTaskId = rootId,
+            createdAt = createdAt
+        )
+        val newId = taskDao.insertTask(nextTask).toInt()
+        val tagNames = tagDao.getTagsForTask(source.id).map { it.name }
+        setTagsForTask(newId, tagNames)
+        return nextTask.copy(id = newId)
+    }
 }
