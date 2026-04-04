@@ -30,7 +30,7 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         val db = AppDatabase.getDatabase(application)
-        repository = TaskRepository(db.taskDao(), db.tagDao())
+        repository = TaskRepository(getApplication(), db.taskDao(), db.tagDao())
         syncRepeatInstancesUpToToday()
     }
 

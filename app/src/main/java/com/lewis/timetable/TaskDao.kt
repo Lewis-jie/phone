@@ -30,6 +30,7 @@ interface TaskDao {
     @Delete
     suspend fun deleteTask(task: Task)
 
+    // BootReceiver 开机恢复提醒时需要同步查全部任务
     @Query("SELECT * FROM tasks")
     suspend fun getAllTasksSync(): List<Task>
 

@@ -1,13 +1,18 @@
 package com.lewis.timetable
 
+import android.content.Context
 import androidx.lifecycle.LiveData
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 class TaskRepository(
+    context: Context,           // ← 新增：用于 AlarmManager 调度，传入 applicationContext
     private val taskDao: TaskDao,
     private val tagDao: TagDao
 ) {
+    // 始终持有 applicationContext，避免内存泄漏
+    private val appContext = context.applicationContext
+
     companion object {
         private val repeatSyncMutex = Mutex()
     }
@@ -30,9 +35,33 @@ class TaskRepository(
     fun getTasksByTag(tagName: String) = taskDao.getTasksByTag(tagName)
     fun getTagsForTaskLive(taskId: Int) = tagDao.getTagsForTaskLive(taskId)
 
-    suspend fun insert(task: Task): Long = taskDao.insertTask(task)
-    suspend fun update(task: Task) = taskDao.updateTask(task)
-    suspend fun delete(task: Task) = taskDao.deleteTask(task)
+    /**
+     * 插入任务，并自动注册提醒闹钟。
+     */
+    suspend fun insert(task: Task): Long {
+        val newId = taskDao.insertTask(task)
+        // 携带真实 id 再调度，确保 PendingIntent requestCode 与数据库 id 一致
+        ReminderScheduler.schedule(appContext, task.copy(id = newId.toInt()))
+        return newId
+    }
+
+    /**
+     * 更新任务：先取消旧闹钟，再按新数据重新注册。
+     * 若任务已完成（isCompleted=true），ReminderScheduler.schedule 内部会跳过注册。
+     */
+    suspend fun update(task: Task) {
+        ReminderScheduler.cancel(appContext, task.id)
+        taskDao.updateTask(task)
+        ReminderScheduler.schedule(appContext, task)
+    }
+
+    /**
+     * 删除任务：先取消闹钟，再删除数据。
+     */
+    suspend fun delete(task: Task) {
+        ReminderScheduler.cancel(appContext, task.id)
+        taskDao.deleteTask(task)
+    }
 
     suspend fun setTagsForTask(taskId: Int, tagNames: List<String>) {
         tagDao.deleteTagsForTask(taskId)
@@ -42,7 +71,6 @@ class TaskRepository(
                 existing.id.toLong()
             } else {
                 val newId = tagDao.insertTag(Tag(name = name))
-                // 新标签立即分配颜色，不等下次启动
                 val usedColors = tagDao.getTagsWithColor().map { it.color }
                 val newColor = TagColorManager.assignColor(usedColors)
                 tagDao.updateTagColor(newId.toInt(), newColor)
@@ -56,10 +84,6 @@ class TaskRepository(
     fun getAllTags(): LiveData<List<Tag>> = tagDao.getAllTags()
     fun getRecentTags(): LiveData<List<Tag>> = tagDao.getRecentTags()
 
-    /**
-     * 确保所有已使用的标签都分配了颜色。
-     * 在 ViewModel 初始化或标签变化时调用。
-     */
     suspend fun ensureTagColors() {
         val allUsed = tagDao.getAllUsedTagsSync()
         val usedColors = allUsed.filter { it.color != 0 }.map { it.color }
@@ -75,7 +99,19 @@ class TaskRepository(
     suspend fun getRootRepeatTasksSync() = taskDao.getRootRepeatTasksSync()
     suspend fun getAllInstancesOfRepeat(rootId: Int) = taskDao.getAllInstancesOfRepeat(rootId)
     suspend fun getEarliestUncompletedInstance(rootId: Int) = taskDao.getEarliestUncompletedInstance(rootId)
-    suspend fun deleteAllRepeatInstances(rootId: Int) = taskDao.deleteAllRepeatInstances(rootId)
+
+    /**
+     * 删除某根任务的所有重复实例（含根任务本身），并取消所有对应闹钟。
+     */
+    suspend fun deleteAllRepeatInstances(rootId: Int) {
+        // 先取消根任务的闹钟
+        ReminderScheduler.cancel(appContext, rootId)
+        // 再取消所有子实例的闹钟
+        taskDao.getAllInstancesOfRepeat(rootId).forEach { instance ->
+            ReminderScheduler.cancel(appContext, instance.id)
+        }
+        taskDao.deleteAllRepeatInstances(rootId)
+    }
 
     suspend fun backfillRepeatInstancesUpTo(cutoffMs: Long) {
         repeatSyncMutex.withLock {
@@ -133,6 +169,11 @@ class TaskRepository(
         val newId = taskDao.insertTask(nextTask).toInt()
         val tagNames = tagDao.getTagsForTask(source.id).map { it.name }
         setTagsForTask(newId, tagNames)
-        return nextTask.copy(id = newId)
+
+        // 为新生成的重复实例注册提醒闹钟
+        val taskWithId = nextTask.copy(id = newId)
+        ReminderScheduler.schedule(appContext, taskWithId)
+
+        return taskWithId
     }
 }

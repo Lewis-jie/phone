@@ -7,6 +7,7 @@ import android.os.StrictMode
 class MyApplication : Application() {
     override fun onCreate() {
         super.onCreate()
+        ReminderSettingsHelper.createNotificationChannel(this)
         if ((applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0) {
             StrictMode.setThreadPolicy(
                 StrictMode.ThreadPolicy.Builder()

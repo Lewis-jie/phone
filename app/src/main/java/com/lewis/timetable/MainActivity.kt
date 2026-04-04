@@ -125,6 +125,15 @@ class MainActivity : AppCompatActivity() {
     private fun requestPermissionsIfNeeded() {
         val permissions = mutableListOf<String>()
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (
+                ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
+                PackageManager.PERMISSION_GRANTED
+            ) {
+                permissions.add(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
             if (
                 ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) !=

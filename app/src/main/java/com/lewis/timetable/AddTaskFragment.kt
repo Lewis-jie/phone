@@ -1,6 +1,7 @@
 ﻿package com.lewis.timetable
 
 import android.app.DatePickerDialog
+import android.os.Build
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
@@ -114,6 +115,7 @@ class AddTaskFragment : Fragment() {
 
         // 淇濆瓨鎸夐挳鑳屾櫙鑹茶窡闅忎富棰?
         btnSave.backgroundTintList = android.content.res.ColorStateList.valueOf(primaryColor)
+        btnSave.setTextColor(Color.WHITE)
 
         val bgDrawable = {
             android.graphics.drawable.GradientDrawable().apply {
@@ -496,38 +498,78 @@ class AddTaskFragment : Fragment() {
             val reminderTime = reminderOffsetMinutes?.let { offset ->
                 if (offset > 0) startCal.timeInMillis - offset * 60000L else null
             }
-            val repeatKey = repeatKeys[spinnerRepeat.selectedItemPosition]
-            val repeatDaysStr = if (repeatKey == "custom")
-                selectedDays.sorted().joinToString(",") else ""
-            val tagNames = normalizedTagNames(etCategory.text.toString())
+            if (reminderTime != null && reminderTime <= System.currentTimeMillis()) {
+                Toast.makeText(requireContext(), "提醒时间已过，请选择未来时间", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            if (
+                reminderTime != null &&
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                !ReminderScheduler.canScheduleExact(requireContext())
+            ) {
+                AlertDialog.Builder(requireContext())
+                    .setTitle("需要开启精确闹钟权限")
+                    .setMessage("当前系统未授予“闹钟和提醒”权限，提醒在后台可能不会准时触发。请先开启后再保存提醒。")
+                    .setPositiveButton("去开启") { _, _ ->
+                        ReminderScheduler.openExactAlarmSettings(requireContext())
+                    }
+                    .setNegativeButton("取消", null)
+                    .show()
+                return@setOnClickListener
+            }
+            val saveTask = {
+                val repeatKey = repeatKeys[spinnerRepeat.selectedItemPosition]
+                val repeatDaysStr = if (repeatKey == "custom")
+                    selectedDays.sorted().joinToString(",") else ""
+                val tagNames = normalizedTagNames(etCategory.text.toString())
 
-            val task = existingTask?.copy(
-                title = title,
-                description = etDescription.text.toString().trim(),
-                startTime = startCal.timeInMillis,
-                endTime = endCal.timeInMillis,
-                dueDate = dueDateCalendar?.timeInMillis,
-                reminderTime = reminderTime,
-                repeatType = repeatKey,
-                repeatDays = repeatDaysStr
-            ) ?: Task(
-                title = title,
-                description = etDescription.text.toString().trim(),
-                startTime = startCal.timeInMillis,
-                endTime = endCal.timeInMillis,
-                dueDate = dueDateCalendar?.timeInMillis,
-                reminderTime = reminderTime,
-                repeatType = repeatKey,
-                repeatDays = repeatDaysStr
-            )
+                val task = existingTask?.copy(
+                    title = title,
+                    description = etDescription.text.toString().trim(),
+                    startTime = startCal.timeInMillis,
+                    endTime = endCal.timeInMillis,
+                    dueDate = dueDateCalendar?.timeInMillis,
+                    reminderTime = reminderTime,
+                    repeatType = repeatKey,
+                    repeatDays = repeatDaysStr
+                ) ?: Task(
+                    title = title,
+                    description = etDescription.text.toString().trim(),
+                    startTime = startCal.timeInMillis,
+                    endTime = endCal.timeInMillis,
+                    dueDate = dueDateCalendar?.timeInMillis,
+                    reminderTime = reminderTime,
+                    repeatType = repeatKey,
+                    repeatDays = repeatDaysStr
+                )
 
-            if (existingTask != null) {
-                viewModel.updateWithTags(task, tagNames)
-            } else {
-                viewModel.insertWithTags(task, tagNames)
+                if (existingTask != null) {
+                    viewModel.updateWithTags(task, tagNames)
+                } else {
+                    viewModel.insertWithTags(task, tagNames)
+                }
+
+                findNavController().navigateUp()
             }
 
-            findNavController().navigateUp()
+            if (
+                reminderTime != null &&
+                !BatteryOptimizationHelper.isIgnoringBatteryOptimizations(requireContext())
+            ) {
+                AlertDialog.Builder(requireContext())
+                    .setTitle("建议关闭电池优化")
+                    .setMessage("当前系统可能在后台延迟提醒。建议把本应用设为“不受限制”，并在系统设置中允许自启动。")
+                    .setPositiveButton("去设置") { _, _ ->
+                        BatteryOptimizationHelper.openBatteryOptimizationSettings(requireContext())
+                    }
+                    .setNegativeButton("仍然保存") { _, _ ->
+                        saveTask()
+                    }
+                    .show()
+                return@setOnClickListener
+            }
+
+            saveTask()
         }
     }
 }
