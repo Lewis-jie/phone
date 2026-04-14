@@ -620,6 +620,7 @@ class CategoryFragment : Fragment() {
                         dueDate = obj.optLongOrNull("dueDate"),
                         repeatType = obj.optString("repeatType").ifEmpty { "none" },
                         repeatDays = obj.optString("repeatDays"),
+                        skippedDates = obj.optString("skippedDates"),
                         reminderTime = obj.optLongOrNull("reminderTime"),
                         isCompleted = obj.optBoolean("isCompleted"),
                         isStarred = obj.optBoolean("isStarred"),
@@ -733,6 +734,7 @@ class CategoryFragment : Fragment() {
         put("dueDate", dueDate)
         put("repeatType", repeatType)
         put("repeatDays", repeatDays)
+        put("skippedDates", skippedDates)
         put("reminderTime", reminderTime)
         put("isCompleted", isCompleted)
         put("isStarred", isStarred)

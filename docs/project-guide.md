@@ -116,6 +116,7 @@ MyApp/
 待办、标签、课表、课程和时间表都走同一个 `AppDatabase`。这样查询聚合简单，但数据库迁移需要格外谨慎。
 
 ### 4. 重复任务采用“根任务 + 派生实例”
+从 2026-04-14 起，根任务新增 `skippedDates`，用于记录“仅删除此次”的跳过日期。`TaskViewModel`、`TaskRepository` 和 `RepeatTaskHelper` 都会读取这个字段，避免被手动删除的单次循环实例在后续同步时再次回补。
 
 重复规则保存在根任务上，展示和完成操作主要发生在派生实例上。`TaskRepository` 和 `TaskViewModel` 会把实例补齐到需要的时间范围。
 

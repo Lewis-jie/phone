@@ -17,6 +17,11 @@ class TaskRepository(
         private val repeatSyncMutex = Mutex()
     }
 
+    data class RepeatInstanceResult(
+        val task: Task,
+        val created: Boolean
+    )
+
     val allTasks: LiveData<List<Task>> by lazy(LazyThreadSafetyMode.NONE) { taskDao.getAllTasks() }
     val allUsedTags: LiveData<List<Tag>> by lazy(LazyThreadSafetyMode.NONE) { tagDao.getAllUsedTags() }
     val starredTasks: LiveData<List<Task>> by lazy(LazyThreadSafetyMode.NONE) { taskDao.getStarredTasks() }
@@ -99,6 +104,8 @@ class TaskRepository(
     suspend fun getRootRepeatTasksSync() = taskDao.getRootRepeatTasksSync()
     suspend fun getAllInstancesOfRepeat(rootId: Int) = taskDao.getAllInstancesOfRepeat(rootId)
     suspend fun getEarliestUncompletedInstance(rootId: Int) = taskDao.getEarliestUncompletedInstance(rootId)
+    suspend fun getRepeatInstanceByStart(rootId: Int, startTime: Long) =
+        taskDao.getRepeatInstanceByStart(rootId, startTime)
 
     /**
      * 删除某根任务的所有重复实例（含根任务本身），并取消所有对应闹钟。
@@ -130,7 +137,7 @@ class TaskRepository(
                     .associateBy { it.startTime!! }
                     .toMutableMap()
                 var current = existingInstances.first()
-                var nextStartMs = RepeatTaskHelper.getNextStartTime(current)
+                var nextStartMs = RepeatTaskHelper.getNextStartTime(current.copy(skippedDates = root.skippedDates))
                 var safeIter = 0
 
                 while (nextStartMs != null && nextStartMs <= cutoffMs && safeIter < 1000) {
@@ -138,15 +145,38 @@ class TaskRepository(
                     current = if (existing != null) {
                         existing
                     } else {
-                        val inserted = createNextRepeatInstance(current, root.id, nextStartMs, now)
-                        existingByStart[nextStartMs] = inserted
-                        inserted
+                        val result = ensureNextRepeatInstanceLocked(current, root.id, nextStartMs, now)
+                        existingByStart[nextStartMs] = result.task
+                        result.task
                     }
-                    nextStartMs = RepeatTaskHelper.getNextStartTime(current)
+                    nextStartMs = RepeatTaskHelper.getNextStartTime(current.copy(skippedDates = root.skippedDates))
                     safeIter++
                 }
             }
         }
+    }
+
+    suspend fun ensureNextRepeatInstance(
+        source: Task,
+        rootId: Int,
+        nextStartMs: Long
+    ): RepeatInstanceResult = repeatSyncMutex.withLock {
+        ensureNextRepeatInstanceLocked(source, rootId, nextStartMs, System.currentTimeMillis())
+    }
+
+    private suspend fun ensureNextRepeatInstanceLocked(
+        source: Task,
+        rootId: Int,
+        nextStartMs: Long,
+        createdAt: Long
+    ): RepeatInstanceResult {
+        taskDao.getRepeatInstanceByStart(rootId, nextStartMs)?.let { existing ->
+            return RepeatInstanceResult(existing, created = false)
+        }
+        return RepeatInstanceResult(
+            task = createNextRepeatInstance(source, rootId, nextStartMs, createdAt),
+            created = true
+        )
     }
 
     private suspend fun createNextRepeatInstance(
@@ -155,6 +185,7 @@ class TaskRepository(
         nextStartMs: Long,
         createdAt: Long
     ): Task {
+        val rootTask = taskDao.getTaskById(rootId)
         val currentStartMs = source.startTime ?: nextStartMs
         val duration = (source.endTime ?: (currentStartMs + 3_600_000L)) - currentStartMs
         val nextTask = source.copy(
@@ -164,7 +195,8 @@ class TaskRepository(
             reminderTime = source.reminderTime?.let { nextStartMs - (currentStartMs - it) },
             isCompleted = false,
             parentTaskId = rootId,
-            createdAt = createdAt
+            createdAt = createdAt,
+            skippedDates = rootTask?.skippedDates ?: source.skippedDates
         )
         val newId = taskDao.insertTask(nextTask).toInt()
         val tagNames = tagDao.getTagsForTask(source.id).map { it.name }

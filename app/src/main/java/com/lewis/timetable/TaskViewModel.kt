@@ -27,6 +27,7 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         repository.getRootRepeatTasks()
     }
     private var tagColorsEnsured = false
+    private val generatedRepeatTaskIds = mutableMapOf<Int, Int>()
 
     init {
         val db = AppDatabase.getDatabase(application)
@@ -104,25 +105,22 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
             if (firstColor != 0) firstColor else TagColorManager.NO_TAG_COLOR
         }.mapKeys { it.key.id }
 
-    fun completeAndGenerateNext(task: Task, tagNames: List<String>) = viewModelScope.launch {
+    suspend fun completeAndGenerateNext(task: Task) {
         repository.update(task.copy(isCompleted = true))
 
-        val nextStartMs = RepeatTaskHelper.getNextStartTime(task) ?: return@launch
-        val currentStartMs = task.startTime ?: return@launch
-        val duration = (task.endTime ?: (currentStartMs + 3600000L)) - currentStartMs
         val rootId = RepeatTaskHelper.getRootId(task)
-
-        val nextTask = task.copy(
-            id = 0,
-            startTime = nextStartMs,
-            endTime = nextStartMs + duration,
-            reminderTime = task.reminderTime?.let { nextStartMs - (currentStartMs - it) },
-            isCompleted = false,
-            parentTaskId = rootId,
-            createdAt = System.currentTimeMillis()
-        )
-        val newId = repository.insert(nextTask)
-        repository.setTagsForTask(newId.toInt(), tagNames)
+        val rootTask = repository.getTaskById(rootId) ?: task
+        val recurrenceSource = task.copy(skippedDates = rootTask.skippedDates)
+        val nextStartMs = RepeatTaskHelper.getNextStartTime(recurrenceSource) ?: run {
+            generatedRepeatTaskIds.remove(task.id)
+            return
+        }
+        val result = repository.ensureNextRepeatInstance(recurrenceSource, rootId, nextStartMs)
+        if (result.created) {
+            generatedRepeatTaskIds[task.id] = result.task.id
+        } else {
+            generatedRepeatTaskIds.remove(task.id)
+        }
     }
 
     fun undoComplete(task: Task) = viewModelScope.launch {
@@ -133,82 +131,115 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
 
         repository.update(task.copy(isCompleted = false))
 
+        val generatedId = generatedRepeatTaskIds.remove(task.id) ?: return@launch
+        val generatedNext = repository.getTaskById(generatedId) ?: return@launch
         val taskStart = task.startTime ?: Long.MIN_VALUE
         val rootId = RepeatTaskHelper.getRootId(task)
-        val generatedNext = repository.getAllInstancesOfRepeat(rootId)
-            .asSequence()
-            .filter { it.id != task.id }
-            .filter { !it.isCompleted }
-            .filter { (it.startTime ?: Long.MAX_VALUE) > taskStart }
-            .sortedBy { it.startTime ?: Long.MAX_VALUE }
-            .firstOrNull()
 
-        if (generatedNext != null) {
+        if (
+            RepeatTaskHelper.getRootId(generatedNext) == rootId &&
+            !generatedNext.isCompleted &&
+            (generatedNext.startTime ?: Long.MAX_VALUE) > taskStart
+        ) {
             repository.delete(generatedNext)
         }
     }
 
     fun deleteThisInstance(task: Task) = viewModelScope.launch {
-        if (task.repeatType == "none") {
+        if (task.repeatType == "none" && task.parentTaskId == 0) {
             repository.delete(task)
             return@launch
         }
 
-        if (task.parentTaskId != 0) {
+        val rootId = RepeatTaskHelper.getRootId(task)
+        val rootTask = repository.getTaskById(rootId) ?: run {
             repository.delete(task)
             return@launch
         }
-
-        val futureInstance = repository.getAllInstancesOfRepeat(task.id)
-            .asSequence()
-            .filter { it.id != task.id }
-            .filter { !it.isCompleted }
-            .sortedBy { it.startTime ?: Long.MAX_VALUE }
-            .firstOrNull()
-
-        if (futureInstance != null) {
-            repository.update(
-                task.copy(
-                    title = futureInstance.title,
-                    description = futureInstance.description,
-                    startTime = futureInstance.startTime,
-                    endTime = futureInstance.endTime,
-                    dueDate = futureInstance.dueDate,
-                    reminderTime = futureInstance.reminderTime,
-                    repeatType = futureInstance.repeatType,
-                    repeatDays = futureInstance.repeatDays,
-                    isCompleted = futureInstance.isCompleted,
-                    isStarred = futureInstance.isStarred,
-                    sortOrder = futureInstance.sortOrder,
-                    createdAt = futureInstance.createdAt
-                )
-            )
-            repository.delete(futureInstance)
-            return@launch
-        }
-
-        val nextStartMs = RepeatTaskHelper.getNextStartTime(task)
-        if (nextStartMs == null) {
+        val occurrenceStart = task.startTime ?: run {
             repository.delete(task)
             return@launch
         }
+        val updatedRoot = RepeatTaskHelper.addSkippedDate(rootTask, occurrenceStart)
+        generatedRepeatTaskIds.remove(task.id)
 
-        val startMs = task.startTime ?: nextStartMs
-        val duration = (task.endTime ?: (startMs + 3600000L)) - startMs
-        repository.update(
-            task.copy(
-                startTime = nextStartMs,
-                endTime = nextStartMs + duration,
-                reminderTime = task.reminderTime?.let { nextStartMs - (startMs - it) },
-                isCompleted = false
-            )
-        )
+        if (task.id != rootId) {
+            repository.update(updatedRoot)
+            repository.delete(task)
+            if (!rootTask.isCompleted && (rootTask.startTime ?: Long.MAX_VALUE) < occurrenceStart) {
+                collapseRepeatSeriesPast(updatedRoot, task, occurrenceStart)
+            }
+            return@launch
+        }
+
+        collapseRepeatSeriesPast(updatedRoot, task, occurrenceStart)
     }
 
     fun deleteAllRepeatInstances(task: Task) = viewModelScope.launch {
         val rootId = RepeatTaskHelper.getRootId(task)
         repository.deleteAllRepeatInstances(rootId)
     }
+
+    private suspend fun collapseRepeatSeriesPast(rootTask: Task, task: Task, occurrenceStart: Long) {
+        repository.getAllInstancesOfRepeat(rootTask.id)
+            .asSequence()
+            .filter { it.id != rootTask.id }
+            .filter { !it.isCompleted }
+            .filter { (it.startTime ?: Long.MAX_VALUE) <= occurrenceStart }
+            .forEach { repository.delete(it) }
+
+        val futureInstance = repository.getAllInstancesOfRepeat(rootTask.id)
+            .asSequence()
+            .filter { it.id != rootTask.id }
+            .filter { !it.isCompleted }
+            .filter { (it.startTime ?: Long.MAX_VALUE) > occurrenceStart }
+            .sortedBy { it.startTime ?: Long.MAX_VALUE }
+            .firstOrNull()
+
+        if (futureInstance != null) {
+            repository.update(rootTask.promoteFrom(futureInstance))
+            repository.delete(futureInstance)
+            return
+        }
+
+        val nextStartMs = RepeatTaskHelper.getNextStartTime(task.copy(skippedDates = rootTask.skippedDates))
+        if (nextStartMs == null) {
+            repository.delete(rootTask)
+            return
+        }
+
+        val startMs = task.startTime ?: nextStartMs
+        val duration = (task.endTime ?: (startMs + 3600000L)) - startMs
+        repository.update(
+            rootTask.copy(
+                title = task.title,
+                description = task.description,
+                startTime = nextStartMs,
+                endTime = nextStartMs + duration,
+                dueDate = task.dueDate?.let { nextStartMs - (startMs - it) },
+                repeatType = task.repeatType,
+                repeatDays = task.repeatDays,
+                reminderTime = task.reminderTime?.let { nextStartMs - (startMs - it) },
+                isCompleted = false,
+                isStarred = task.isStarred,
+                sortOrder = task.sortOrder
+            )
+        )
+    }
+
+    private fun Task.promoteFrom(source: Task): Task = copy(
+        title = source.title,
+        description = source.description,
+        startTime = source.startTime,
+        endTime = source.endTime,
+        dueDate = source.dueDate,
+        reminderTime = source.reminderTime,
+        repeatType = source.repeatType,
+        repeatDays = source.repeatDays,
+        isCompleted = source.isCompleted,
+        isStarred = source.isStarred,
+        sortOrder = source.sortOrder
+    )
 
     fun syncRepeatInstancesUpToToday() = viewModelScope.launch(Dispatchers.IO) {
         repository.backfillRepeatInstancesUpTo(endOfToday())

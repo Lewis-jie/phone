@@ -18,6 +18,7 @@ data class Task(
     val dueDate: Long? = null,
     val repeatType: String = "none",
     val repeatDays: String = "",
+    val skippedDates: String = "",
     val reminderTime: Long? = null,
     val isCompleted: Boolean = false,
     val isStarred: Boolean = false,

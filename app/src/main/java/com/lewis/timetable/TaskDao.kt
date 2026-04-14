@@ -55,6 +55,9 @@ interface TaskDao {
     @Query("SELECT * FROM tasks WHERE (parentTaskId = :rootId OR id = :rootId) AND isCompleted = 0 ORDER BY startTime ASC LIMIT 1")
     suspend fun getEarliestUncompletedInstance(rootId: Int): Task?
 
+    @Query("SELECT * FROM tasks WHERE (parentTaskId = :rootId OR id = :rootId) AND startTime = :startTime LIMIT 1")
+    suspend fun getRepeatInstanceByStart(rootId: Int, startTime: Long): Task?
+
     @Query("DELETE FROM tasks WHERE parentTaskId = :rootId OR id = :rootId")
     suspend fun deleteAllRepeatInstances(rootId: Int)
 }

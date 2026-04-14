@@ -268,8 +268,7 @@ class TaskListFragment : Fragment() {
 
         if (task.repeatType != "none") {
             viewLifecycleOwner.lifecycleScope.launch {
-                val tags = viewModel.getTagsForTask(task.id).map { it.name }
-                viewModel.completeAndGenerateNext(task, tags)
+                viewModel.completeAndGenerateNext(task)
                 showCompletionFeedback(anchorView, fab, task, isRepeat = true)
             }
         } else {
