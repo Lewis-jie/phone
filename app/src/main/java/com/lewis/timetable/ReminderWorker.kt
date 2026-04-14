@@ -1,6 +1,41 @@
 package com.lewis.timetable
 
-// 提醒后台任务（占位保留）。
-// 当前提醒链路已由 AlarmManager + BootReceiver 覆盖，
-// 若后续需要使用 WorkManager 做周期性任务或更复杂的调度策略，
-// 可在此处实现 CoroutineWorker。
+import android.content.Context
+import androidx.work.CoroutineWorker
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.WorkerParameters
+import java.util.concurrent.TimeUnit
+
+class ReminderWorker(
+    appContext: Context,
+    params: WorkerParameters
+) : CoroutineWorker(appContext, params) {
+
+    override suspend fun doWork(): Result {
+        return try {
+            val database = AppDatabase.getDatabase(applicationContext)
+            val allTasks = database.taskDao().getAllTasksSync()
+            ReminderScheduler.scheduleAll(applicationContext, allTasks)
+            CourseReminderScheduler.scheduleAll(applicationContext)
+            Result.success()
+        } catch (_: Throwable) {
+            Result.retry()
+        }
+    }
+
+    companion object {
+        private const val UNIQUE_WORK_NAME = "reminder_periodic_self_check"
+
+        fun enqueuePeriodic(context: Context) {
+            val request = PeriodicWorkRequestBuilder<ReminderWorker>(12, TimeUnit.HOURS)
+                .build()
+            WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+                UNIQUE_WORK_NAME,
+                ExistingPeriodicWorkPolicy.UPDATE,
+                request
+            )
+        }
+    }
+}

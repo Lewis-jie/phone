@@ -659,6 +659,8 @@ class CategoryFragment : Fragment() {
                         semesterStart = obj.optLong("semesterStart"),
                         totalWeeks = obj.optInt("totalWeeks", 20),
                         timetableId = obj.optInt("timetableId", 0),
+                        reminderEnabled = obj.optBoolean("reminderEnabled", false),
+                        reminderMinutesBefore = obj.optInt("reminderMinutesBefore", 15),
                         createdAt = obj.optLongOrNull("createdAt") ?: System.currentTimeMillis()
                     )
                 )
@@ -757,6 +759,8 @@ class CategoryFragment : Fragment() {
         put("semesterStart", semesterStart)
         put("totalWeeks", totalWeeks)
         put("timetableId", timetableId)
+        put("reminderEnabled", reminderEnabled)
+        put("reminderMinutesBefore", reminderMinutesBefore)
         put("createdAt", createdAt)
     }
     private fun CourseLesson.toJson() = JSONObject().apply {

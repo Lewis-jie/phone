@@ -11,5 +11,7 @@ data class CourseSchedule(
     val semesterStart: Long,
     val totalWeeks: Int = 20,
     val timetableId: Int = 0,
+    val reminderEnabled: Boolean = false,
+    val reminderMinutesBefore: Int = 15,
     val createdAt: Long = System.currentTimeMillis()
 )

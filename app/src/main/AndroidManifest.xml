@@ -1,24 +1,16 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- 原有存储权限 -->
     <uses-permission
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
-
-    <!-- ========== 通知相关新增权限 ========== -->
-    <!-- Android 13+ 发送通知需要运行时授权（需在 UI 层主动申请） -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- 精确闹钟权限：Android 12+ 需要用户在系统设置中开启 -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
-    <!-- 请求加入电池优化白名单，降低后台提醒被厂商系统延迟的概率 -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-    <!-- 开机广播权限 -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <!-- 振动权限 -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
     <application
@@ -42,20 +34,23 @@
             </intent-filter>
         </activity>
 
-        <!-- ========== 通知相关新增组件 ========== -->
-
-        <!-- 提醒广播接收器：AlarmManager 触发时调用 -->
         <receiver
             android:name=".ReminderReceiver"
             android:exported="false" />
 
-        <!-- 开机广播接收器：重启后恢复所有提醒 -->
+        <receiver
+            android:name=".CourseReminderReceiver"
+            android:exported="false" />
+
         <receiver
             android:name=".BootReceiver"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
 

@@ -63,6 +63,7 @@ class CourseViewModel(application: Application) : AndroidViewModel(application) 
             .edit {
                 putInt("active_schedule_id", id)
             }
+        rescheduleCourseReminders()
     }
 
     fun getSelectedId(): Int = _selectedId.value ?: 0
@@ -87,12 +88,27 @@ class CourseViewModel(application: Application) : AndroidViewModel(application) 
         val withId = lessons.map { it.copy(scheduleId = scheduleId) }
         repo.replaceLessons(scheduleId, withId)
         selectSchedule(scheduleId)
+        rescheduleCourseReminders()
     }
 
-    fun updateScheduleSettings(scheduleId: Int, semesterStart: Long, totalWeeks: Int) =
+    fun updateScheduleSettings(
+        scheduleId: Int,
+        semesterStart: Long,
+        totalWeeks: Int,
+        reminderEnabled: Boolean,
+        reminderMinutesBefore: Int
+    ) =
         viewModelScope.launch {
             val schedule = repo.getScheduleById(scheduleId) ?: return@launch
-            repo.updateSchedule(schedule.copy(semesterStart = semesterStart, totalWeeks = totalWeeks))
+            repo.updateSchedule(
+                schedule.copy(
+                    semesterStart = semesterStart,
+                    totalWeeks = totalWeeks,
+                    reminderEnabled = reminderEnabled,
+                    reminderMinutesBefore = reminderMinutesBefore
+                )
+            )
+            rescheduleCourseReminders()
         }
 
     fun deleteSchedule(scheduleId: Int) = viewModelScope.launch {
@@ -118,12 +134,14 @@ class CourseViewModel(application: Application) : AndroidViewModel(application) 
         onDone: () -> Unit = {}
     ) = viewModelScope.launch {
         repo.replaceCourseSlots(scheduleId, originalCourseName, newLessons)
+        rescheduleCourseReminders()
         onDone()
     }
 
     fun linkTimetableToSchedule(scheduleId: Int, timetableId: Int) = viewModelScope.launch {
         val schedule = repo.getScheduleById(scheduleId) ?: return@launch
         repo.updateSchedule(schedule.copy(timetableId = timetableId))
+        rescheduleCourseReminders()
     }
 
     suspend fun getTimetableById(id: Int) = timetableRepo.getTimetableById(id)
@@ -179,6 +197,13 @@ class CourseViewModel(application: Application) : AndroidViewModel(application) 
         val schedules = repo.getAllSchedulesSync()
         schedules.filter { it.timetableId == id }.forEach { schedule ->
             repo.updateSchedule(schedule.copy(timetableId = 0))
+        }
+        rescheduleCourseReminders()
+    }
+
+    private fun rescheduleCourseReminders() {
+        viewModelScope.launch {
+            CourseReminderScheduler.scheduleAll(getApplication())
         }
     }
 }

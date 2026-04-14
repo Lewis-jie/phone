@@ -16,98 +16,94 @@ object ReminderScheduler {
     private const val EXTRA_TASK_TITLE = "task_title"
     private const val EXTRA_TASK_DESC = "task_description"
     private const val EXTRA_REMINDER_TIME = "reminder_time"
-
-    // -----------------------------------------------------------------------
-    // 公开 API
-    // -----------------------------------------------------------------------
+    private const val EXTRA_TASK_START_TIME = "task_start_time"
 
     fun schedule(context: Context, task: Task) {
         val reminderTime = task.reminderTime
         if (reminderTime == null) {
-            Log.d(TAG, "task[${task.id}] 无提醒时间，跳过")
+            Log.d(TAG, "task[${task.id}] has no reminder time, skip")
             return
         }
         if (reminderTime <= System.currentTimeMillis()) {
-            Log.d(TAG, "task[${task.id}] 提醒时间已过 ($reminderTime)，跳过")
+            Log.d(TAG, "task[${task.id}] reminder time already passed, skip")
             return
         }
         if (task.isCompleted) {
-            Log.d(TAG, "task[${task.id}] 已完成，跳过")
+            Log.d(TAG, "task[${task.id}] already completed, skip")
             return
         }
 
-        val pi = buildPendingIntent(context, task.id, task.title, task.description, reminderTime)
-        val am = context.getSystemService(AlarmManager::class.java)
+        val pendingIntent = buildPendingIntent(
+            context = context,
+            taskId = task.id,
+            title = task.title,
+            description = task.description,
+            reminderTime = reminderTime,
+            startTime = task.startTime ?: task.dueDate
+        )
+        val alarmManager = context.getSystemService(AlarmManager::class.java)
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !am.canScheduleExactAlarms()) {
-            // 没有"闹钟和提醒"特殊权限时，退回到可在待机下触发的非精确闹钟
-            Log.w(TAG, "task[${task.id}] 无精确闹钟权限，使用 setAndAllowWhileIdle 兜底")
-            am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, reminderTime, pi)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarmManager.canScheduleExactAlarms()) {
+            Log.w(TAG, "task[${task.id}] exact alarm not allowed, fallback to inexact alarm")
+            alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, reminderTime, pendingIntent)
         } else {
-            val showIntent = buildAlarmClockInfoIntent(context, task.id)
-            Log.d(TAG, "task[${task.id}] 注册精确闹钟(AlarmClock)，触发时间=$reminderTime")
-            am.setAlarmClock(AlarmManager.AlarmClockInfo(reminderTime, showIntent), pi)
+            Log.d(TAG, "task[${task.id}] schedule exact alarm at $reminderTime")
+            alarmManager.setExactAndAllowWhileIdle(
+                AlarmManager.RTC_WAKEUP,
+                reminderTime,
+                pendingIntent
+            )
         }
     }
 
     fun cancel(context: Context, taskId: Int) {
-        val pi = buildCancelPendingIntent(context, taskId) ?: run {
-            Log.d(TAG, "task[$taskId] 取消时未找到 PendingIntent，已跳过")
+        val pendingIntent = buildCancelPendingIntent(context, taskId) ?: run {
+            Log.d(TAG, "task[$taskId] no existing pending intent, skip cancel")
             return
         }
-        context.getSystemService(AlarmManager::class.java).cancel(pi)
-        pi.cancel()
-        Log.d(TAG, "task[$taskId] 闹钟已取消")
+        context.getSystemService(AlarmManager::class.java).cancel(pendingIntent)
+        pendingIntent.cancel()
+        Log.d(TAG, "task[$taskId] alarm cancelled")
     }
 
     fun scheduleAll(context: Context, tasks: List<Task>) {
         val now = System.currentTimeMillis()
-        val pending = tasks.filter {
+        val pendingTasks = tasks.filter {
             !it.isCompleted && it.reminderTime != null && it.reminderTime > now
         }
-        Log.d(TAG, "scheduleAll: 共 ${pending.size} 个待恢复提醒")
-        val missed = tasks.filter { task ->
+        val recentlyMissedTasks = tasks.filter { task ->
             val reminderTime = task.reminderTime ?: return@filter false
             !task.isCompleted &&
                 reminderTime in (now - MISSED_GRACE_MS)..now &&
                 !ReminderDeliveryStore.wasDelivered(context, task.id, reminderTime)
         }
-        Log.d(TAG, "scheduleAll: pending=${pending.size}, catchUp=${missed.size}")
-        missed.forEach { task ->
+
+        Log.d(
+            TAG,
+            "scheduleAll pending=${pendingTasks.size}, catchUp=${recentlyMissedTasks.size}"
+        )
+
+        recentlyMissedTasks.forEach { task ->
             val reminderTime = task.reminderTime ?: return@forEach
-            Log.w(TAG, "task[${task.id}] recently missed while app was unavailable, post catch-up notification")
+            Log.w(TAG, "task[${task.id}] missed recently, post catch-up notification")
             ReminderNotificationDispatcher.notify(
-                context,
-                task.id,
-                task.title,
-                task.description,
-                reminderTime
+                context = context,
+                taskId = task.id,
+                title = task.title,
+                description = task.description,
+                reminderTime = reminderTime,
+                startTime = task.startTime ?: task.dueDate
             )
         }
-        pending.forEach { schedule(context, it) }
+
+        pendingTasks.forEach { schedule(context, it) }
     }
 
-    // -----------------------------------------------------------------------
-    // 权限辅助（供 UI 层调用）
-    // -----------------------------------------------------------------------
-
-    /**
-     * 返回当前是否拥有精确闹钟权限。
-     * Android 12 以下始终返回 true。
-     */
     fun canScheduleExact(context: Context): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return true
         return context.getSystemService(AlarmManager::class.java).canScheduleExactAlarms()
     }
 
-    /**
-     * 跳转到系统"闹钟和提醒"特殊权限页面（Android 12+）。
-     *
-     * 建议在 CategoryFragment 的"提醒设置"入口处添加：
-     *   if (!ReminderScheduler.canScheduleExact(requireContext())) {
-     *       ReminderScheduler.openExactAlarmSettings(requireContext())
-     *   }
-     */
     fun openExactAlarmSettings(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             context.startActivity(
@@ -118,16 +114,13 @@ object ReminderScheduler {
         }
     }
 
-    // -----------------------------------------------------------------------
-    // 私有辅助
-    // -----------------------------------------------------------------------
-
     private fun buildPendingIntent(
         context: Context,
         taskId: Int,
         title: String,
         description: String,
-        reminderTime: Long
+        reminderTime: Long,
+        startTime: Long?
     ): PendingIntent {
         val intent = Intent(context, ReminderReceiver::class.java).apply {
             action = ACTION_REMINDER
@@ -135,21 +128,9 @@ object ReminderScheduler {
             putExtra(EXTRA_TASK_TITLE, title)
             putExtra(EXTRA_TASK_DESC, description)
             putExtra(EXTRA_REMINDER_TIME, reminderTime)
+            putExtra(EXTRA_TASK_START_TIME, startTime ?: -1L)
         }
         return PendingIntent.getBroadcast(
-            context,
-            taskId,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-    }
-
-    private fun buildAlarmClockInfoIntent(context: Context, taskId: Int): PendingIntent {
-        val intent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            putExtra(EXTRA_TASK_ID, taskId)
-        }
-        return PendingIntent.getActivity(
             context,
             taskId,
             intent,

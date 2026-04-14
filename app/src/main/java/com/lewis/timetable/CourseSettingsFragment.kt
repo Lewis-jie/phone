@@ -14,6 +14,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.navigation.fragment.findNavController
+import com.google.android.material.switchmaterial.SwitchMaterial
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -26,10 +27,15 @@ class CourseSettingsFragment : Fragment() {
     private lateinit var spinnerSchedule: Spinner
     private lateinit var tvSemesterStart: TextView
     private lateinit var tvWeeks: TextView
+    private lateinit var switchCourseReminder: SwitchMaterial
+    private lateinit var rowCourseReminderOffset: View
+    private lateinit var tvCourseReminderOffset: TextView
     private var scheduleList: List<CourseSchedule> = emptyList()
     private var selectedSchedule: CourseSchedule? = null
     private var semesterStartMs: Long = 0L
     private var totalWeeks: Int = 20
+    private var reminderEnabled: Boolean = false
+    private var reminderMinutesBefore: Int = 15
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -43,6 +49,9 @@ class CourseSettingsFragment : Fragment() {
         spinnerSchedule = view.findViewById(R.id.spinner_settings_schedule)
         tvSemesterStart = view.findViewById(R.id.tv_semester_start)
         tvWeeks = view.findViewById(R.id.tv_weeks)
+        switchCourseReminder = view.findViewById(R.id.switch_course_reminder)
+        rowCourseReminderOffset = view.findViewById(R.id.row_course_reminder_offset)
+        tvCourseReminderOffset = view.findViewById(R.id.tv_course_reminder_offset)
 
         view.findViewById<View>(R.id.btn_back_settings).setOnClickListener {
             findNavController().navigateUp()
@@ -56,7 +65,13 @@ class CourseSettingsFragment : Fragment() {
                 Toast.makeText(requireContext(), "请先选择开学第一周周一", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            vm.updateScheduleSettings(schedule.id, semesterStartMs, totalWeeks)
+            vm.updateScheduleSettings(
+                scheduleId = schedule.id,
+                semesterStart = semesterStartMs,
+                totalWeeks = totalWeeks,
+                reminderEnabled = reminderEnabled,
+                reminderMinutesBefore = reminderMinutesBefore
+            )
             Toast.makeText(requireContext(), "已保存", Toast.LENGTH_SHORT).show()
             findNavController().navigateUp()
         }
@@ -90,6 +105,15 @@ class CourseSettingsFragment : Fragment() {
                 totalWeeks++
                 tvWeeks.text = String.format(Locale.getDefault(), "%d", totalWeeks)
             }
+        }
+
+        switchCourseReminder.setOnCheckedChangeListener { _, isChecked ->
+            reminderEnabled = isChecked
+            updateReminderViews()
+        }
+        rowCourseReminderOffset.setOnClickListener {
+            if (!reminderEnabled) return@setOnClickListener
+            showReminderMinutesDialog()
         }
 
         view.findViewById<View>(R.id.btn_delete_schedule).setOnClickListener {
@@ -194,15 +218,44 @@ class CourseSettingsFragment : Fragment() {
         selectedSchedule = schedule
         semesterStartMs = schedule.semesterStart
         totalWeeks = schedule.totalWeeks
+        reminderEnabled = schedule.reminderEnabled
+        reminderMinutesBefore = schedule.reminderMinutesBefore
         tvWeeks.text = String.format(Locale.getDefault(), "%d", totalWeeks)
         tvSemesterStart.text = if (semesterStartMs > 0) {
             formatSemesterStart(semesterStartMs)
         } else {
             "请选择"
         }
+        switchCourseReminder.isChecked = reminderEnabled
+        updateReminderViews()
     }
 
     private fun formatSemesterStart(timeMillis: Long): String {
         return SimpleDateFormat("yyyy年MM月dd日（周一）", Locale.CHINESE).format(Date(timeMillis))
+    }
+
+    private fun showReminderMinutesDialog() {
+        val options = intArrayOf(5, 10, 15, 30, 60)
+        val labels = options.map { "上课前${it}分钟" }.toTypedArray()
+        val checkedIndex = options.indexOf(reminderMinutesBefore).coerceAtLeast(0)
+        AlertDialog.Builder(requireContext())
+            .setTitle("选择提醒时间")
+            .setSingleChoiceItems(labels, checkedIndex) { dialog, which ->
+                reminderMinutesBefore = options[which]
+                updateReminderViews()
+                dialog.dismiss()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun updateReminderViews() {
+        rowCourseReminderOffset.isEnabled = reminderEnabled
+        rowCourseReminderOffset.alpha = if (reminderEnabled) 1f else 0.45f
+        tvCourseReminderOffset.text = if (reminderEnabled) {
+            "上课前${reminderMinutesBefore}分钟"
+        } else {
+            "已关闭"
+        }
     }
 }

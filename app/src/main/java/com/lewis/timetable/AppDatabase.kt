@@ -91,11 +91,22 @@ private val MIGRATION_11_12 = object : Migration(11, 12) {
     }
 }
 
+private val MIGRATION_12_13 = object : Migration(12, 13) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL(
+            "ALTER TABLE course_schedules ADD COLUMN reminderEnabled INTEGER NOT NULL DEFAULT 0"
+        )
+        database.execSQL(
+            "ALTER TABLE course_schedules ADD COLUMN reminderMinutesBefore INTEGER NOT NULL DEFAULT 15"
+        )
+    }
+}
+
 @Database(
     entities = [Task::class, Tag::class, TaskTag::class,
         CourseSchedule::class, CourseLesson::class,
         Timetable::class, TimetablePeriod::class],
-    version = 12,
+    version = 13,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -121,7 +132,8 @@ abstract class AppDatabase : RoomDatabase() {
                         MIGRATION_8_9,
                         MIGRATION_9_10,
                         MIGRATION_10_11,
-                        MIGRATION_11_12
+                        MIGRATION_11_12,
+                        MIGRATION_12_13
                     )
                     .fallbackToDestructiveMigration()
                     .build()

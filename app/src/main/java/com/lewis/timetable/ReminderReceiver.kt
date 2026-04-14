@@ -35,6 +35,7 @@ class ReminderReceiver : BroadcastReceiver() {
         }
         val description = intent.getStringExtra("task_description") ?: ""
         val scheduledAt = intent.getLongExtra("reminder_time", -1L)
+        val startTime = intent.getLongExtra("task_start_time", -1L).takeIf { it > 0 }
         val delayMs = if (scheduledAt > 0) System.currentTimeMillis() - scheduledAt else -1L
 
         Log.d(TAG, "task[$taskId] reminder broadcast received, delayMs=$delayMs")
@@ -43,7 +44,8 @@ class ReminderReceiver : BroadcastReceiver() {
             taskId,
             title,
             description,
-            scheduledAt.takeIf { it > 0 }
+            scheduledAt.takeIf { it > 0 },
+            startTime
         )
     }
 }

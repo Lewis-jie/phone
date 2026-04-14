@@ -117,6 +117,10 @@
     <string name="course_settings_timetable">时间表</string>
     <string name="course_settings_new_timetable">新建时间表</string>
     <string name="course_settings_edit_timetable">编辑时间表</string>
+    <string name="course_settings_reminder_title">提醒时间</string>
+    <string name="course_settings_reminder_enable">开启提醒</string>
+    <string name="course_settings_reminder_offset">选择时间</string>
+    <string name="course_settings_reminder_disabled">已关闭</string>
     <string name="course_settings_semester">学期设置</string>
     <string name="course_settings_semester_start">开学第一周周一</string>
     <string name="course_settings_total_weeks">学期总周数</string>

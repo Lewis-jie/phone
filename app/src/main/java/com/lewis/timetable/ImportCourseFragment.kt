@@ -140,11 +140,20 @@ class ImportCourseFragment : Fragment() {
                     }
                     1 -> {
                         val targetId = if (vm.getSelectedId() > 0) vm.getSelectedId() else existing.first().id
-                        val defaultWeeks = existing.firstOrNull { it.id == targetId }?.totalWeeks ?: 20
+                        val targetSchedule = existing.firstOrNull { it.id == targetId }
+                        val defaultWeeks = targetSchedule?.totalWeeks ?: 20
                         resolveConflictsAndImport(parseResult, currentName, defaultWeeks) { finalLessons, _, totalWeeks ->
                             vm.overwriteSchedule(targetId, finalLessons)
-                            val semesterStart = existing.firstOrNull { it.id == targetId }?.semesterStart ?: 0L
-                            vm.updateScheduleSettings(targetId, semesterStart, totalWeeks)
+                            val semesterStart = targetSchedule?.semesterStart ?: 0L
+                            val reminderEnabled = targetSchedule?.reminderEnabled ?: false
+                            val reminderMinutesBefore = targetSchedule?.reminderMinutesBefore ?: 15
+                            vm.updateScheduleSettings(
+                                targetId,
+                                semesterStart,
+                                totalWeeks,
+                                reminderEnabled,
+                                reminderMinutesBefore
+                            )
                             Toast.makeText(requireContext(), "导入成功", Toast.LENGTH_SHORT).show()
                             findNavController().popBackStack(R.id.courseFragment, false)
                         }

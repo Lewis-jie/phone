@@ -1,4 +1,4 @@
-package com.lewis.timetable
+﻿package com.lewis.timetable
 
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -7,6 +7,9 @@ import android.content.Intent
 import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 object ReminderNotificationDispatcher {
 
@@ -17,7 +20,8 @@ object ReminderNotificationDispatcher {
         taskId: Int,
         title: String,
         description: String,
-        reminderTime: Long? = null
+        reminderTime: Long? = null,
+        startTime: Long? = null
     ) {
         try {
             ReminderSettingsHelper.createNotificationChannel(context)
@@ -45,10 +49,16 @@ object ReminderNotificationDispatcher {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
 
-            val content = description.ifEmpty { "Task is about to start" }
+            val formattedStartTime = formatStartTime(startTime ?: reminderTime)
+            val notificationTitle = "\u5f85\u529e\u300c$title\u300d"
+            val content = if (formattedStartTime != null) {
+                "\u5c06\u4e8e${formattedStartTime}\u540e\u5f00\u59cb"
+            } else {
+                "\u5373\u5c06\u5f00\u59cb"
+            }
             val notification = NotificationCompat.Builder(context, ReminderSettingsHelper.CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_notification_reminder)
-                .setContentTitle(title)
+                .setContentTitle(notificationTitle)
                 .setContentText(content)
                 .setStyle(NotificationCompat.BigTextStyle().bigText(content))
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -67,5 +77,10 @@ object ReminderNotificationDispatcher {
         } catch (t: Throwable) {
             Log.e(TAG, "task[$taskId] notify failed", t)
         }
+    }
+
+    private fun formatStartTime(timeMillis: Long?): String? {
+        if (timeMillis == null || timeMillis <= 0) return null
+        return SimpleDateFormat("HH:mm", Locale.CHINESE).format(Date(timeMillis))
     }
 }
