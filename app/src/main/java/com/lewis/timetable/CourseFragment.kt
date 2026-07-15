@@ -16,7 +16,7 @@ import android.widget.ScrollView
 import android.widget.Spinner
 import android.widget.TextView
 import androidx.fragment.app.Fragment
-import androidx.fragment.app.viewModels
+import androidx.fragment.app.activityViewModels
 import androidx.navigation.fragment.findNavController
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import androidx.core.graphics.toColorInt
@@ -26,7 +26,7 @@ import java.util.Locale
 
 class CourseFragment : Fragment() {
 
-    private val vm: CourseViewModel by viewModels()
+    private val vm: CourseViewModel by activityViewModels()
 
     private lateinit var spinnerSchedule: Spinner
     private lateinit var tvWeekRange: TextView
@@ -34,6 +34,9 @@ class CourseFragment : Fragment() {
 
     private var currentMonday: Calendar = mondayOf(Calendar.getInstance())
     private var scheduleList: List<CourseSchedule> = emptyList()
+    private var activeSchedule: CourseSchedule? = null
+    private var lessonsSnapshot = ActiveScheduleLessonsSnapshot(0, emptyList())
+    private var timetableSnapshot = ActiveTimetablePeriodSnapshot(0, emptyList())
     private var lessonList: List<CourseLesson> = emptyList()
     private var timetablePeriods: List<TimetablePeriod> = emptyList()
 
@@ -104,15 +107,26 @@ class CourseFragment : Fragment() {
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
         }
 
-        vm.activeLessons.observe(viewLifecycleOwner) { lessons ->
-            lessonList = lessons
-            renderGrid()
+        vm.activeLessonsSnapshot.observe(viewLifecycleOwner) { snapshot ->
+            lessonsSnapshot = snapshot
+            updateActiveCourseData()
         }
 
-        vm.activeTimetablePeriods.observe(viewLifecycleOwner) { periods ->
-            timetablePeriods = periods.sortedBy { it.periodNumber }
-            renderGrid()
+        vm.activeTimetablePeriodSnapshot.observe(viewLifecycleOwner) { snapshot ->
+            timetableSnapshot = snapshot
+            updateActiveCourseData()
         }
+
+        vm.activeSchedule.observe(viewLifecycleOwner) { schedule ->
+            activeSchedule = schedule
+            updateActiveCourseData()
+        }
+    }
+
+    private fun updateActiveCourseData() {
+        lessonList = lessonsSnapshot.lessonsFor(activeSchedule)
+        timetablePeriods = timetableSnapshot.periodsFor(activeSchedule).sortedBy { it.periodNumber }
+        renderGrid()
     }
 
     private fun renderGrid() {
@@ -141,6 +155,9 @@ class CourseFragment : Fragment() {
             dateFormat.format(sunday.time)
         )
         val displaySlotCount = CourseLesson.slotCount(timetablePeriods, lessonList)
+        val weekNum = activeSchedule
+            ?.takeIf { it.semesterStart > 0 }
+            ?.let { CourseLesson.currentWeekNum(it.semesterStart, currentMonday.timeInMillis) }
 
         val labelWidth = (62 * density).toInt()
         val dayWidth = ((resources.displayMetrics.widthPixels - labelWidth) / 7f).toInt().coerceAtLeast((40 * density).toInt())
@@ -262,7 +279,14 @@ class CourseFragment : Fragment() {
                 val top = slotTops[block.startSlotIndex]
                 val endBottom = slotTops[block.endSlotIndex] + slotHeights[block.endSlotIndex]
                 val blockHeight = maxOf((36 * density).toInt(), endBottom - top)
-                dayCol.addView(buildLessonBlock(block.lesson, blockHeight, density, blockIndex).apply {
+                val displayState = CourseLesson.weekDisplayState(
+                    block.lesson.weekBitmap,
+                    weekNum,
+                    activeSchedule?.totalWeeks ?: 0
+                )
+                if (displayState == CourseWeekDisplayState.HIDDEN) return@forEachIndexed
+                val isCurrentWeek = displayState == CourseWeekDisplayState.ACTIVE
+                dayCol.addView(buildLessonBlock(block.lesson, blockHeight, density, blockIndex, isCurrentWeek).apply {
                     layoutParams = FrameLayout.LayoutParams(dayWidth, blockHeight).apply {
                         topMargin = top
                         leftMargin = (2 * density).toInt()
@@ -288,10 +312,16 @@ class CourseFragment : Fragment() {
         gridContainer.addView(verticalScroll)
     }
 
-    private fun buildLessonBlock(lesson: CourseLesson, blockHeight: Int, density: Float, blockIndex: Int): View {
+    private fun buildLessonBlock(
+        lesson: CourseLesson,
+        blockHeight: Int,
+        density: Float,
+        blockIndex: Int,
+        isCurrentWeek: Boolean
+    ): View {
         val surfaceColor = lessonSurfaceColor(lesson.color, blockIndex)
         val textColor = lessonTextColor(lesson.color, blockIndex)
-        return LinearLayout(requireContext()).apply {
+        val content = LinearLayout(requireContext()).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(
                 (4 * density).toInt(),
@@ -327,6 +357,29 @@ class CourseFragment : Fragment() {
                     )
                 })
             }
+        }
+        if (isCurrentWeek) return content
+
+        return FrameLayout(requireContext()).apply {
+            addView(content.apply {
+                alpha = 0.35f
+                layoutParams = FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT
+                )
+            })
+            addView(TextView(requireContext()).apply {
+                text = "非本周"
+                textSize = 10f
+                typeface = Typeface.DEFAULT_BOLD
+                gravity = Gravity.CENTER
+                setTextColor("#555555".toColorInt())
+                setBackgroundColor(Color.argb(150, 255, 255, 255))
+                layoutParams = FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT
+                )
+            })
         }
     }
 

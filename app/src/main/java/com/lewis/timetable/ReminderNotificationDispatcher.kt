@@ -26,14 +26,16 @@ object ReminderNotificationDispatcher {
         try {
             ReminderSettingsHelper.createNotificationChannel(context)
             val nm = context.getSystemService(NotificationManager::class.java)
-            val channel = nm.getNotificationChannel(ReminderSettingsHelper.CHANNEL_ID)
+            val channelImportance = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                nm.getNotificationChannel(ReminderSettingsHelper.CHANNEL_ID)?.importance
+            } else {
+                null
+            }
             if (!nm.areNotificationsEnabled()) {
                 Log.w(TAG, "task[$taskId] notifications disabled at app level, skip notify")
                 return
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
-                channel?.importance == NotificationManager.IMPORTANCE_NONE
-            ) {
+            if (channelImportance == NotificationManager.IMPORTANCE_NONE) {
                 Log.w(TAG, "task[$taskId] reminder channel blocked, skip notify")
                 return
             }
@@ -72,7 +74,7 @@ object ReminderNotificationDispatcher {
             reminderTime?.let { ReminderDeliveryStore.markDelivered(context, taskId, it) }
             Log.d(
                 TAG,
-                "task[$taskId] notification posted, channelImportance=${channel?.importance ?: -1}"
+                "task[$taskId] notification posted, channelImportance=${channelImportance ?: -1}"
             )
         } catch (t: Throwable) {
             Log.e(TAG, "task[$taskId] notify failed", t)

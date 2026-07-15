@@ -17,7 +17,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
-import androidx.fragment.app.viewModels
+import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.core.graphics.toColorInt
@@ -26,7 +26,7 @@ import java.util.Locale
 
 class CourseLessonEditFragment : Fragment() {
 
-    private val vm: CourseViewModel by viewModels()
+    private val vm: CourseViewModel by activityViewModels()
 
     private lateinit var etCourseName: EditText
     private lateinit var colorPickerRow: LinearLayout
@@ -548,6 +548,7 @@ class CourseLessonEditFragment : Fragment() {
             }
         }
         vm.saveCourseEdit(scheduleId, originalCourseName, newLessons) {
+            if (!isAdded || view == null) return@saveCourseEdit
             activity?.runOnUiThread {
                 Toast.makeText(requireContext(), "已保存", Toast.LENGTH_SHORT).show()
                 findNavController().navigateUp()

@@ -4,6 +4,7 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.os.Build
 
 object ReminderSettingsHelper {
 
@@ -19,6 +20,8 @@ object ReminderSettingsHelper {
      * VISIBILITY_PUBLIC → 锁屏通知显示完整内容
      */
     fun createNotificationChannel(context: Context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+
         val channel = NotificationChannel(
             CHANNEL_ID,
             "任务提醒",

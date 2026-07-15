@@ -8,7 +8,7 @@ import android.view.ViewGroup
 import android.widget.TextView
 import android.widget.Toast
 import androidx.fragment.app.Fragment
-import androidx.fragment.app.viewModels
+import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -17,7 +17,7 @@ import kotlinx.coroutines.launch
 
 class CourseOverviewFragment : Fragment() {
 
-    private val vm: CourseViewModel by viewModels()
+    private val vm: CourseViewModel by activityViewModels()
     private lateinit var recyclerView: RecyclerView
     private lateinit var emptyView: TextView
 

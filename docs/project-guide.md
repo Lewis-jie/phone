@@ -120,11 +120,11 @@ MyApp/
 
 ### 课程提醒
 - [`CourseReminderScheduler.kt`](../app/src/main/java/com/lewis/timetable/CourseReminderScheduler.kt)
-  负责课程提醒注册、取消、激活课表扫描和 catch-up 补发。
+  负责课程提醒未来 28 天滚动注册、取消、串行重建、激活课表扫描和 catch-up 补发。
 - [`CourseReminderReceiver.kt`](../app/src/main/java/com/lewis/timetable/CourseReminderReceiver.kt)
   接收课程提醒广播。
 - [`CourseReminderNotificationDispatcher.kt`](../app/src/main/java/com/lewis/timetable/CourseReminderNotificationDispatcher.kt)
-  负责课程通知投递，当前标题格式为：`课程名 即将开始`
+  负责课程通知投递，当前标题格式为：`课程名 即将开始`；内容行左侧为 `将于 HH:mm 开始`，右侧为 `上课教室：教室名`
 - [`CourseReminderRegistry.kt`](../app/src/main/java/com/lewis/timetable/CourseReminderRegistry.kt)
   记录已经注册的课程提醒 key，用于清理旧提醒。
 - [`CourseReminderDeliveryStore.kt`](../app/src/main/java/com/lewis/timetable/CourseReminderDeliveryStore.kt)

@@ -18,6 +18,7 @@ class CourseReminderReceiver : BroadcastReceiver() {
             return
         }
         val courseName = intent.getStringExtra("course_name").orEmpty()
+        val classroom = intent.getStringExtra("classroom").orEmpty()
         val startTime = intent.getLongExtra("start_time", -1L)
         val reminderTime = intent.getLongExtra("reminder_time", -1L)
         if (courseName.isBlank() || startTime <= 0 || reminderTime <= 0) {
@@ -29,6 +30,7 @@ class CourseReminderReceiver : BroadcastReceiver() {
             context = context,
             lessonId = lessonId,
             courseName = courseName,
+            classroom = classroom,
             startTime = startTime,
             reminderTime = reminderTime
         )

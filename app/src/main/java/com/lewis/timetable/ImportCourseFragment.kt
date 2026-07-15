@@ -12,7 +12,7 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
-import androidx.fragment.app.viewModels
+import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.core.graphics.toColorInt
@@ -25,7 +25,7 @@ import java.util.Locale
 
 class ImportCourseFragment : Fragment() {
 
-    private val vm: CourseViewModel by viewModels()
+    private val vm: CourseViewModel by activityViewModels()
     private var selectedParser: CourseImportParser? = null
 
     private val fileLauncher = registerForActivityResult(
@@ -382,6 +382,7 @@ class ImportCourseFragment : Fragment() {
 
         lifecycleScope.launch {
             vm.createSchedule(name, mondayMs, totalWeeks, lessons) {
+                if (!isAdded || view == null) return@createSchedule
                 activity?.runOnUiThread {
                     val message = if (lessons.isEmpty()) "创建成功" else "导入成功"
                     Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()

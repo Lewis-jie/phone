@@ -2,6 +2,14 @@
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import java.util.Calendar
+import java.util.TimeZone
+
+enum class CourseWeekDisplayState {
+    ACTIVE,
+    INACTIVE,
+    HIDDEN
+}
 
 @Entity(tableName = "course_lessons")
 data class CourseLesson(
@@ -95,16 +103,47 @@ data class CourseLesson(
             return if (start < 0) -1 else start + EXTRA_SLOT_DURATION_MIN
         }
 
-        fun isWeekActive(weekBitmap: Long, weekNum: Int): Boolean {
-            if (weekNum < 1 || weekNum > 63) return true
+        fun isWeekActive(weekBitmap: Long, weekNum: Int, totalWeeks: Int = 63): Boolean {
+            if (weekNum < 1 || weekNum > totalWeeks || weekNum > 63) return false
             return (weekBitmap ushr (weekNum - 1)) and 1L == 1L
         }
 
-        fun currentWeekNum(semesterStartMs: Long, currentMondayMs: Long): Int {
+        fun weekDisplayState(
+            weekBitmap: Long,
+            weekNum: Int?,
+            totalWeeks: Int
+        ): CourseWeekDisplayState {
+            if (weekNum == null) return CourseWeekDisplayState.ACTIVE
+            if (weekNum !in 1..totalWeeks || weekNum > 63) {
+                return CourseWeekDisplayState.HIDDEN
+            }
+            return if (isWeekActive(weekBitmap, weekNum, totalWeeks)) {
+                CourseWeekDisplayState.ACTIVE
+            } else {
+                CourseWeekDisplayState.INACTIVE
+            }
+        }
+
+        fun currentWeekNum(
+            semesterStartMs: Long,
+            currentMondayMs: Long,
+            timeZone: TimeZone = TimeZone.getDefault()
+        ): Int {
             if (semesterStartMs <= 0) return -1
-            val diff = currentMondayMs - semesterStartMs
-            if (diff < 0) return -1
-            return (diff / (7L * 24 * 3600 * 1000)).toInt() + 1
+            if (currentMondayMs < semesterStartMs) return -1
+
+            var week = 1
+            val cursor = Calendar.getInstance(timeZone).apply {
+                timeInMillis = semesterStartMs
+            }
+            while (true) {
+                val nextWeek = (cursor.clone() as Calendar).apply {
+                    add(Calendar.WEEK_OF_YEAR, 1)
+                }
+                if (nextWeek.timeInMillis > currentMondayMs) return week
+                cursor.timeInMillis = nextWeek.timeInMillis
+                week++
+            }
         }
     }
 }

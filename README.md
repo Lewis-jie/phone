@@ -31,7 +31,7 @@
 - 待办支持本地提醒通知
 - 待办通知样式为：`待办「待办名称」` + `将于 XX 时间后开始`
 - 课程支持独立本地提醒通知
-- 课程通知样式为：`课程名 即将开始`
+- 课程通知样式为：标题 `课程名 即将开始`，内容左侧 `将于 HH:mm 开始`、右侧 `上课教室：教室名`
 - 开机后会恢复未来提醒
 - 应用恢复可用后会补发最近错过的提醒
 - Android 13+ 支持运行时通知权限申请
@@ -67,7 +67,7 @@
 
 ## 运行环境
 - Android Studio Stable
-- JDK 11
+- JDK 21
 - `compileSdk 36`
 - `targetSdk 36`
 - `minSdk 24`
@@ -78,6 +78,8 @@
 直接使用 Android Studio 打开项目根目录，等待 Gradle Sync 完成后运行 `app` 模块即可。
 
 ### 命令行
+确保 `JAVA_HOME` 指向 JDK 21，然后执行：
+
 ```bash
 ./gradlew.bat :app:compileDebugKotlin
 ./gradlew.bat assembleDebug

@@ -9,6 +9,8 @@ import android.os.Build
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 object CourseReminderScheduler {
 
@@ -16,39 +18,50 @@ object CourseReminderScheduler {
     private const val ACTION_COURSE_REMINDER = "com.lewis.timetable.ACTION_COURSE_REMINDER"
     private const val EXTRA_LESSON_ID = "lesson_id"
     private const val EXTRA_COURSE_NAME = "course_name"
+    private const val EXTRA_CLASSROOM = "classroom"
     private const val EXTRA_START_TIME = "start_time"
     private const val EXTRA_REMINDER_TIME = "reminder_time"
     private const val MISSED_GRACE_MS = 10 * 60 * 1000L
-    private const val DAY_MS = 24L * 60 * 60 * 1000L
-    private const val WEEK_MS = 7L * DAY_MS
+    private val scheduleMutex = Mutex()
 
     suspend fun scheduleAll(context: Context) = withContext(Dispatchers.IO) {
-        val appContext = context.applicationContext
-        val desiredOccurrences = loadDesiredOccurrences(appContext)
-        val now = System.currentTimeMillis()
-        val futureOccurrences = desiredOccurrences.filter { it.reminderTime > now }
+        scheduleMutex.withLock {
+            val appContext = context.applicationContext
+            val now = System.currentTimeMillis()
+            val desiredOccurrences = loadDesiredOccurrences(appContext, now)
+            val futureOccurrences = desiredOccurrences
+                .asSequence()
+                .filter { it.reminderTime > now }
+                .filterNot {
+                    CourseReminderDeliveryStore.wasDelivered(appContext, it.lessonId, it.reminderTime)
+                }
+                .toList()
 
-        syncScheduledOccurrences(appContext, futureOccurrences)
-        desiredOccurrences.asSequence()
-            .filter { it.reminderTime in (now - MISSED_GRACE_MS)..now }
-            .filterNot { CourseReminderDeliveryStore.wasDelivered(appContext, it.lessonId, it.reminderTime) }
-            .forEach { occurrence ->
-                Log.w(TAG, "lesson[${occurrence.lessonId}] missed recently, post catch-up notification")
-                CourseReminderNotificationDispatcher.notify(
-                    context = appContext,
-                    lessonId = occurrence.lessonId,
-                    courseName = occurrence.courseName,
-                    startTime = occurrence.startTime,
-                    reminderTime = occurrence.reminderTime
-                )
-            }
+            desiredOccurrences.asSequence()
+                .filter { it.reminderTime in (now - MISSED_GRACE_MS)..now }
+                .filterNot {
+                    CourseReminderDeliveryStore.wasDelivered(appContext, it.lessonId, it.reminderTime)
+                }
+                .forEach { occurrence ->
+                    Log.w(TAG, "lesson[${occurrence.lessonId}] missed recently, post catch-up notification")
+                    CourseReminderNotificationDispatcher.notify(
+                        context = appContext,
+                        lessonId = occurrence.lessonId,
+                        courseName = occurrence.courseName,
+                        classroom = occurrence.classroom,
+                        startTime = occurrence.startTime,
+                        reminderTime = occurrence.reminderTime
+                    )
+                }
 
-        futureOccurrences.forEach { occurrence ->
-            scheduleOccurrence(appContext, occurrence)
+            syncScheduledOccurrences(appContext, futureOccurrences)
         }
     }
 
-    private suspend fun loadDesiredOccurrences(context: Context): List<CourseReminderOccurrence> {
+    private suspend fun loadDesiredOccurrences(
+        context: Context,
+        now: Long
+    ): List<CourseReminderOccurrence> {
         val activeScheduleId = context
             .getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
             .getInt("active_schedule_id", 0)
@@ -67,72 +80,7 @@ object CourseReminderScheduler {
         } else {
             emptyList()
         }
-        return buildOccurrences(schedule, lessons, periods)
-    }
-
-    private fun buildOccurrences(
-        schedule: CourseSchedule,
-        lessons: List<CourseLesson>,
-        periods: List<TimetablePeriod>
-    ): List<CourseReminderOccurrence> {
-        val mergedLessons = mergeLessons(lessons, periods)
-        return buildList {
-            mergedLessons.forEach { lesson ->
-                val startMinutes = CourseLesson.resolveSlotStartMin(lesson.slotIndex, periods)
-                if (startMinutes < 0) return@forEach
-                for (week in 1..schedule.totalWeeks) {
-                    if (!CourseLesson.isWeekActive(lesson.weekBitmap, week)) continue
-                    val startTime = schedule.semesterStart +
-                        (week - 1L) * WEEK_MS +
-                        (lesson.dayOfWeek - 1L) * DAY_MS +
-                        startMinutes * 60_000L
-                    val reminderTime = startTime - schedule.reminderMinutesBefore * 60_000L
-                    add(
-                        CourseReminderOccurrence(
-                            key = "${schedule.id}|${lesson.id}|$week|$reminderTime",
-                            lessonId = lesson.id,
-                            courseName = lesson.courseName,
-                            startTime = startTime,
-                            reminderTime = reminderTime
-                        )
-                    )
-                }
-            }
-        }
-    }
-
-    private fun mergeLessons(
-        lessons: List<CourseLesson>,
-        periods: List<TimetablePeriod>
-    ): List<CourseLesson> {
-        val sorted = lessons.sortedWith(
-            compareBy<CourseLesson>({ it.dayOfWeek }, { it.weekBitmap }, { it.courseName }, { it.classroom }, { it.teacher }, { it.slotIndex })
-        )
-        if (sorted.isEmpty()) return emptyList()
-
-        val merged = mutableListOf<CourseLesson>()
-        var current = sorted.first()
-        var currentLastSlotIndex = current.slotIndex
-
-        for (index in 1 until sorted.size) {
-            val next = sorted[index]
-            val canMerge = current.dayOfWeek == next.dayOfWeek &&
-                current.weekBitmap == next.weekBitmap &&
-                current.courseName == next.courseName &&
-                current.classroom == next.classroom &&
-                current.teacher == next.teacher &&
-                CourseLesson.areSlotsAdjacent(currentLastSlotIndex, next.slotIndex, periods)
-
-            if (canMerge) {
-                currentLastSlotIndex = next.slotIndex
-            } else {
-                merged.add(current)
-                current = next
-                currentLastSlotIndex = next.slotIndex
-            }
-        }
-        merged.add(current)
-        return merged
+        return CourseReminderOccurrencePlanner.build(schedule, lessons, periods, now)
     }
 
     private fun syncScheduledOccurrences(
@@ -142,10 +90,23 @@ object CourseReminderScheduler {
         val desiredKeys = futureOccurrences.mapTo(mutableSetOf()) { it.key }
         val existingKeys = CourseReminderRegistry.getScheduledKeys(context)
         val staleKeys = existingKeys - desiredKeys
+        val trackedKeys = desiredKeys.toMutableSet()
         staleKeys.forEach { key ->
-            cancelByKey(context, key)
+            try {
+                cancelByKey(context, key)
+            } catch (t: Throwable) {
+                trackedKeys.add(key)
+                Log.e(TAG, "reminder[$key] cancellation failed", t)
+            }
         }
-        CourseReminderRegistry.setScheduledKeys(context, desiredKeys)
+        CourseReminderRegistry.setScheduledKeys(context, trackedKeys)
+        futureOccurrences.forEach { occurrence ->
+            try {
+                scheduleOccurrence(context, occurrence)
+            } catch (t: Throwable) {
+                Log.e(TAG, "lesson[${occurrence.lessonId}] schedule failed", t)
+            }
+        }
     }
 
     private fun scheduleOccurrence(context: Context, occurrence: CourseReminderOccurrence) {
@@ -173,6 +134,7 @@ object CourseReminderScheduler {
                 key = key,
                 lessonId = 0,
                 courseName = "",
+                classroom = "",
                 startTime = 0L,
                 reminderTime = 0L
             )
@@ -213,6 +175,7 @@ object CourseReminderScheduler {
                 .build()
             putExtra(EXTRA_LESSON_ID, occurrence.lessonId)
             putExtra(EXTRA_COURSE_NAME, occurrence.courseName)
+            putExtra(EXTRA_CLASSROOM, occurrence.classroom)
             putExtra(EXTRA_START_TIME, occurrence.startTime)
             putExtra(EXTRA_REMINDER_TIME, occurrence.reminderTime)
         }
@@ -223,12 +186,4 @@ object CourseReminderScheduler {
             flags or PendingIntent.FLAG_IMMUTABLE
         )
     }
-
-    private data class CourseReminderOccurrence(
-        val key: String,
-        val lessonId: Int,
-        val courseName: String,
-        val startTime: Long,
-        val reminderTime: Long
-    )
 }

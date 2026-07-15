@@ -10,6 +10,7 @@ import android.view.ViewGroup
 import android.view.animation.DecelerateInterpolator
 import android.widget.*
 import androidx.fragment.app.Fragment
+import androidx.fragment.app.activityViewModels
 import androidx.fragment.app.viewModels
 import androidx.navigation.fragment.findNavController
 import androidx.core.view.isEmpty
@@ -19,12 +20,8 @@ import android.graphics.Color
 import com.google.android.material.color.MaterialColors
 
 class ScheduleFragment : Fragment() {
-    companion object {
-        private const val DAY_MS = 86_400_000L
-    }
-
     private val viewModel: TaskViewModel by viewModels()
-    private val courseViewModel: CourseViewModel by viewModels()
+    private val courseViewModel: CourseViewModel by activityViewModels()
     private lateinit var tabDay:       TextView
     private lateinit var tabWeek:      TextView
     private lateinit var tabMonth:     TextView
@@ -43,7 +40,9 @@ class ScheduleFragment : Fragment() {
     private var cachedTaskTagColors:    Map<Int, Int>          = emptyMap()
     private var cachedSchedules:        List<CourseSchedule>   = emptyList()
     private var cachedLessons:          List<CourseLesson>      = emptyList()
+    private var cachedLessonsSnapshot = ActiveScheduleLessonsSnapshot(0, emptyList())
     private var cachedTimetablePeriods: List<TimetablePeriod>  = emptyList()
+    private var cachedTimetableSnapshot = ActiveTimetablePeriodSnapshot(0, emptyList())
     private var cachedActiveSchedule:   CourseSchedule?        = null
     private var hasObservedAllTasks                           = false
     private var hasObservedRepeatTasks                        = false
@@ -105,8 +104,6 @@ class ScheduleFragment : Fragment() {
         val monday: Calendar,
         val mondayMs: Long,
         val sunday: Calendar,
-        val startMs: Long,
-        val endMs: Long,
         val viewStartMin: Int,
         val viewEndMin: Int,
         val totalHeight: Int,
@@ -116,7 +113,8 @@ class ScheduleFragment : Fragment() {
         val pxPerMin: Float,
         val density: Float,
         val allTasks: List<Task>,
-        val weekNum: Int,
+        val weekNum: Int?,
+        val totalWeeks: Int,
         val renderLessons: Boolean
     )
 
@@ -189,34 +187,24 @@ class ScheduleFragment : Fragment() {
             requestRenderCurrentTab()
         }
         // 课程数据
-        courseViewModel.activeLessons.observe(viewLifecycleOwner) { lessons ->
+        courseViewModel.activeLessonsSnapshot.observe(viewLifecycleOwner) { snapshot ->
             hasObservedLessons = true
-            cachedLessons = lessons
+            cachedLessonsSnapshot = snapshot
+            cachedLessons = snapshot.lessonsFor(cachedActiveSchedule)
             requestRenderCurrentTab()
         }
-        courseViewModel.activeTimetablePeriods.observe(viewLifecycleOwner) { periods ->
+        courseViewModel.activeTimetablePeriodSnapshot.observe(viewLifecycleOwner) { snapshot ->
             hasObservedTimetablePeriods = true
-            cachedTimetablePeriods = periods
+            cachedTimetableSnapshot = snapshot
+            cachedTimetablePeriods = snapshot.periodsFor(cachedActiveSchedule)
             requestRenderCurrentTab()
         }
 
         courseViewModel.activeSchedule.observe(viewLifecycleOwner) { schedule ->
-            val hadObservedSchedule = hasObservedActiveSchedule
-            val previousScheduleId = cachedActiveSchedule?.id
-            val previousTimetableId = cachedActiveSchedule?.timetableId ?: 0
-            val nextScheduleId = schedule?.id
-            val nextTimetableId = schedule?.timetableId ?: 0
-
             hasObservedActiveSchedule = true
-            if (hadObservedSchedule && previousScheduleId != nextScheduleId) {
-                cachedLessons = emptyList()
-                hasObservedLessons = false
-            }
-            if (hadObservedSchedule && (previousScheduleId != nextScheduleId || previousTimetableId != nextTimetableId)) {
-                cachedTimetablePeriods = emptyList()
-                hasObservedTimetablePeriods = nextTimetableId <= 0
-            }
             cachedActiveSchedule = schedule
+            cachedLessons = cachedLessonsSnapshot.lessonsFor(schedule)
+            cachedTimetablePeriods = cachedTimetableSnapshot.periodsFor(schedule)
             requestRenderCurrentTab()
         }
 
@@ -542,8 +530,11 @@ class ScheduleFragment : Fragment() {
         }
 
         val activeSchedule = cachedActiveSchedule ?: return selectedScheduleId <= 0
-        if (!hasObservedLessons) return false
-        if (activeSchedule.timetableId > 0 && !hasObservedTimetablePeriods) return false
+        if (activeSchedule.id != selectedScheduleId) return false
+        if (!hasObservedLessons || cachedLessonsSnapshot.scheduleId != activeSchedule.id) return false
+        if (activeSchedule.timetableId > 0 &&
+            (!hasObservedTimetablePeriods || !cachedTimetableSnapshot.isReadyFor(activeSchedule))
+        ) return false
         return true
     }
 
@@ -661,7 +652,14 @@ class ScheduleFragment : Fragment() {
             weekOverlaySignature = overlaySignature
         }
 
-        val hasVisibleItems = state.allTasks.isNotEmpty() || (state.renderLessons && cachedLessons.isNotEmpty())
+        val hasVisibleLessons = state.renderLessons && cachedLessons.any { lesson ->
+            CourseLesson.weekDisplayState(
+                lesson.weekBitmap,
+                state.weekNum,
+                state.totalWeeks
+            ) != CourseWeekDisplayState.HIDDEN
+        }
+        val hasVisibleItems = state.allTasks.isNotEmpty() || hasVisibleLessons
         updateWeekEmptyState(
             view,
             when {
@@ -691,10 +689,10 @@ class ScheduleFragment : Fragment() {
         val allTasks = (weekTasks + expanded).sortedBy { it.startTime }
 
         val hasTimetablePeriods = cachedTimetablePeriods.isNotEmpty()
-        val shouldWaitForPeriods = cachedLessons.isNotEmpty() &&
-            (cachedActiveSchedule?.timetableId ?: 0) > 0 &&
-            !hasTimetablePeriods
-        val renderLessons = !shouldWaitForPeriods
+        val renderLessons = cachedActiveSchedule?.let { schedule ->
+            cachedLessonsSnapshot.scheduleId == schedule.id &&
+                (schedule.timetableId <= 0 || cachedTimetableSnapshot.isReadyFor(schedule))
+        } ?: false
 
         var viewStartMin = 8 * 60
         var viewEndMin = 22 * 60
@@ -741,14 +739,13 @@ class ScheduleFragment : Fragment() {
         val dayWidths = IntArray(7) { uniformDayWidth }
         val bodyWidth = timeColWidth + dayWidths.sum()
         val weekNum = cachedActiveSchedule?.takeIf { it.semesterStart > 0 }
-            ?.let { CourseLesson.currentWeekNum(it.semesterStart, monday.timeInMillis) } ?: -1
+            ?.let { CourseLesson.currentWeekNum(it.semesterStart, monday.timeInMillis) }
+        val totalWeeks = cachedActiveSchedule?.totalWeeks ?: 0
 
         return WeekFrameState(
             monday = monday,
             mondayMs = monday.timeInMillis,
             sunday = sunday,
-            startMs = startMs,
-            endMs = endMs,
             viewStartMin = viewStartMin,
             viewEndMin = viewEndMin,
             totalHeight = totalHeight,
@@ -759,6 +756,7 @@ class ScheduleFragment : Fragment() {
             density = density,
             allTasks = allTasks,
             weekNum = weekNum,
+            totalWeeks = totalWeeks,
             renderLessons = renderLessons
         )
     }
@@ -792,6 +790,7 @@ class ScheduleFragment : Fragment() {
         return listOf(
             state.mondayMs,
             state.weekNum,
+            state.totalWeeks,
             state.renderLessons,
             taskSignature.hashCode(),
             lessonSignature.hashCode(),
@@ -823,7 +822,9 @@ class ScheduleFragment : Fragment() {
         })
 
         for (i in 0..6) {
-            val dayMs = state.mondayMs + i * DAY_MS
+            val dayMs = (state.monday.clone() as Calendar).apply {
+                add(Calendar.DAY_OF_MONTH, i)
+            }.timeInMillis
             val isToday = isSameDay(dayMs, System.currentTimeMillis())
             header.addView(TextView(requireContext()).apply {
                 text = getString(
@@ -940,12 +941,19 @@ class ScheduleFragment : Fragment() {
         for (i in 0..6) {
             val overlayLayer = weekOverlayLayers.getOrNull(i) ?: continue
             overlayLayer.removeAllViews()
-            val dayStart = state.startMs + i * DAY_MS
-            val dayEnd = dayStart + DAY_MS - 1
+            val dayStartCalendar = startOfDay(state.monday).apply {
+                add(Calendar.DAY_OF_MONTH, i)
+            }
+            val nextDayCalendar = (dayStartCalendar.clone() as Calendar).apply {
+                add(Calendar.DAY_OF_MONTH, 1)
+            }
+            val dayStart = dayStartCalendar.timeInMillis
+            val dayEnd = nextDayCalendar.timeInMillis - 1
             val weekItems = buildWeekVisualItems(
                 dayOfWeek = i + 1,
                 dayTasks = state.allTasks.filter { it.startTime?.let { ts -> ts in dayStart..dayEnd } ?: false },
                 weekNum = state.weekNum,
+                totalWeeks = state.totalWeeks,
                 includeLessons = state.renderLessons
             )
             renderWeekVisualItems(
@@ -962,7 +970,8 @@ class ScheduleFragment : Fragment() {
     private fun buildWeekVisualItems(
         dayOfWeek: Int,
         dayTasks: List<Task>,
-        weekNum: Int,
+        weekNum: Int?,
+        totalWeeks: Int,
         includeLessons: Boolean
     ): List<WeekVisualItem> {
         fun formatMinLabel(minuteOfDay: Int): String {
@@ -979,7 +988,13 @@ class ScheduleFragment : Fragment() {
                     val eMin = block.endMin
                     if (sMin < 0 || eMin <= sMin) return@mapIndexedNotNull null
 
-                    val isCurrentWeek = weekNum < 0 || CourseLesson.isWeekActive(lesson.weekBitmap, weekNum)
+                    val displayState = CourseLesson.weekDisplayState(
+                        lesson.weekBitmap,
+                        weekNum,
+                        totalWeeks
+                    )
+                    if (displayState == CourseWeekDisplayState.HIDDEN) return@mapIndexedNotNull null
+                    val isCurrentWeek = displayState == CourseWeekDisplayState.ACTIVE
                     val bgAlpha = if (isCurrentWeek) 0x55 else 0x1A
                     WeekVisualItem(
                         startMin = sMin,

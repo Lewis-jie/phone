@@ -15,7 +15,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.fragment.app.Fragment
-import androidx.fragment.app.viewModels
+import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.core.graphics.toColorInt
@@ -24,7 +24,7 @@ import java.util.Locale
 
 class TimetableEditorFragment : Fragment() {
 
-    private val vm: CourseViewModel by viewModels()
+    private val vm: CourseViewModel by activityViewModels()
 
     private lateinit var etName: EditText
     private lateinit var switchSameDuration: SwitchCompat
@@ -277,6 +277,7 @@ class TimetableEditorFragment : Fragment() {
         }
 
         vm.saveTimetable(timetableId, bindScheduleId, name, sameDuration, durationMinutes, periods) {
+            if (!isAdded || view == null) return@saveTimetable
             activity?.runOnUiThread {
                 Toast.makeText(requireContext(), getString(R.string.common_saved), Toast.LENGTH_SHORT).show()
                 findNavController().navigateUp()

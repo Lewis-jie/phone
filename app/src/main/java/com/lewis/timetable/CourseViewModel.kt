@@ -6,6 +6,7 @@ import androidx.core.content.edit
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
+import androidx.lifecycle.map
 import androidx.lifecycle.switchMap
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.launch
@@ -23,22 +24,38 @@ class CourseViewModel(application: Application) : AndroidViewModel(application) 
 
     private val _selectedId = MutableLiveData<Int>()
 
-    val activeLessons: LiveData<List<CourseLesson>> by lazy(LazyThreadSafetyMode.NONE) {
+    val activeLessonsSnapshot: LiveData<ActiveScheduleLessonsSnapshot> by lazy(LazyThreadSafetyMode.NONE) {
         _selectedId.switchMap { id ->
-            if (id <= 0) MutableLiveData(emptyList())
-            else repo.getLessonsForSchedule(id)
+            if (id <= 0) {
+                MutableLiveData(ActiveScheduleLessonsSnapshot(0, emptyList()))
+            } else {
+                repo.getLessonsForSchedule(id).map { lessons ->
+                    ActiveScheduleLessonsSnapshot(id, lessons)
+                }
+            }
+        }
+    }
+
+    val activeTimetablePeriodSnapshot: LiveData<ActiveTimetablePeriodSnapshot> by lazy(LazyThreadSafetyMode.NONE) {
+        _selectedId.switchMap { id ->
+            if (id <= 0) {
+                return@switchMap MutableLiveData(ActiveTimetablePeriodSnapshot(0, emptyList()))
+            }
+            repo.getScheduleByIdLive(id).switchMap { schedule ->
+                val timetableId = schedule?.timetableId ?: 0
+                if (timetableId <= 0) {
+                    MutableLiveData(ActiveTimetablePeriodSnapshot(0, emptyList()))
+                } else {
+                    timetableRepo.getPeriodsForTimetable(timetableId).map { periods ->
+                        ActiveTimetablePeriodSnapshot(timetableId, periods)
+                    }
+                }
+            }
         }
     }
 
     val activeTimetablePeriods: LiveData<List<TimetablePeriod>> by lazy(LazyThreadSafetyMode.NONE) {
-        _selectedId.switchMap { id ->
-            if (id <= 0) return@switchMap MutableLiveData(emptyList())
-            repo.getScheduleByIdLive(id).switchMap { schedule ->
-                val timetableId = schedule?.timetableId ?: 0
-                if (timetableId <= 0) MutableLiveData(emptyList())
-                else timetableRepo.getPeriodsForTimetable(timetableId)
-            }
-        }
+        activeTimetablePeriodSnapshot.map { it.periods }
     }
 
     val activeSchedule: LiveData<CourseSchedule?> by lazy(LazyThreadSafetyMode.NONE) {
@@ -88,7 +105,6 @@ class CourseViewModel(application: Application) : AndroidViewModel(application) 
         val withId = lessons.map { it.copy(scheduleId = scheduleId) }
         repo.replaceLessons(scheduleId, withId)
         selectSchedule(scheduleId)
-        rescheduleCourseReminders()
     }
 
     fun updateScheduleSettings(
